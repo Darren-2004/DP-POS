@@ -1,0 +1,132 @@
+datasource db {
+  provider = "sqlite"
+}
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  name                String               @unique
+  pin                 String               // hashed PIN
+  role                String               // "ADMIN" or "CASHIER"
+  permissions         String               @default("ALL") // "ALL", "DIRECT_SALE", "CUSTOMER_SERVICE"
+  needsPinReset       Boolean              @default(true)
+  invoices            Invoice[]            @relation("CreatedInvoices")
+  cancelledInvs       Invoice[]            @relation("CancelledInvoices")
+  createdReservations Reservation[]        @relation("CreatedReservations")
+  updatedReservations Reservation[]        @relation("UpdatedReservations")
+  createdResPayments  ReservationPayment[] @relation("CreatedReservationPayments")
+}
+
+model Category {
+  id            String        @id @default(uuid())
+  name          String        @unique
+  color         String        @default("bg-blue-500")
+  subCategories SubCategory[]
+}
+
+model SubCategory {
+  id         String   @id @default(uuid())
+  name       String
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([name, categoryId])
+}
+
+model Invoice {
+  id                 String        @id @default(uuid())
+  invoiceNumber      String        @unique
+  totalAmount        Float
+  paymentMethod      String        // "CASH", "ONLINE", "ORANGE_MONEY"
+  clientName         String?
+  clientPhone        String?
+  isReservation      Boolean       @default(false)
+  reservationNo      String?
+  isDelivery         Boolean       @default(false)
+  deliveryNo         String?
+  deliveryAddress    String?
+  deliveryStatus     String?       // "PENDING", "IN_DELIVERY", "DELIVERED", "CANCELLED"
+  deliveredAt        DateTime?
+  deliveryFee        Float?        @default(0)
+  deliveryPerson     String?
+  isPaid             Boolean       @default(false)
+  paidAt             DateTime?
+  status             String        @default("VALIDATED") // "VALIDATED", "CANCELLED"
+  cancellationReason String?
+  createdAt          DateTime      @default(now())
+  createdById        String
+  createdBy          User          @relation("CreatedInvoices", fields: [createdById], references: [id])
+  cancelledById      String?
+  cancelledBy        User?         @relation("CancelledInvoices", fields: [cancelledById], references: [id])
+  items              InvoiceItem[]
+}
+
+model InvoiceItem {
+  id           String  @id @default(uuid())
+  invoiceId    String
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  categoryName String
+  price        Float
+}
+
+model Reservation {
+  id            String               @id @default(uuid())
+  reservationNo String               @unique
+  clientName    String
+  clientPhone   String?
+  totalAmount   Float
+  status        String               @default("PENDING") // "PENDING", "COMPLETED", "CANCELLED"
+  createdAt     DateTime             @default(now())
+  createdById   String
+  createdBy     User                 @relation("CreatedReservations", fields: [createdById], references: [id])
+  updatedAt     DateTime             @default(now()) @updatedAt
+  updatedById   String?
+  updatedBy     User?                @relation("UpdatedReservations", fields: [updatedById], references: [id])
+  items         ReservationItem[]
+  payments      ReservationPayment[]
+}
+
+model ReservationItem {
+  id            String      @id @default(uuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  categoryName  String
+  price         Float
+  qty           Int         @default(1)
+}
+
+model ReservationPayment {
+  id                String      @id @default(uuid())
+  reservationId     String
+  reservation       Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  amount            Float
+  paymentMethod     String      // "CASH", "ONLINE", "ORANGE_MONEY"
+  installmentNumber Int         // 1, 2, 3
+  createdAt         DateTime    @default(now())
+  createdById       String
+  createdBy         User        @relation("CreatedReservationPayments", fields: [createdById], references: [id])
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DeliveryPerson {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+
+

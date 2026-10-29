@@ -1,0 +1,336 @@
+import React, { useState } from 'react';
+import ReservationsView from '../components/ReservationsView';
+import CashierInvoicesView from '../components/CashierInvoicesView';
+import CashierStatsView from '../components/CashierStatsView';
+import DeliveriesView from '../components/DeliveriesView';
+import CheckoutWorkspace from './CheckoutWorkspace';
+import { formatFCFA, triggerPrint, triggerProformaPrint, showToast, getPrintMode } from '../utils/helpers';
+import { API_BASE } from '../utils/constants';
+
+
+export default function CashierView({ categories, categoriesLoading, categoriesError, onRetryCategories, currentUser, serverOnline, activeTab, printStationId, stationSelectionRequired }) {
+  // activeTab/setActiveTab are lifted to App so Header can render the tabs
+  const [cart, setCart] = useState([]);
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [selectedMethods, setSelectedMethods] = useState(['CASH']);
+  const [methodAmounts, setMethodAmounts] = useState({ CASH: '', ONLINE: '', ORANGE_MONEY: '' });
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [categorySearch, setCategorySearch] = useState('');
+
+  const getFinalPaymentMethod = () => {
+    if (selectedMethods.length === 0) return 'CASH';
+    if (selectedMethods.length === 1) return selectedMethods[0];
+    const parts = selectedMethods.map(m => {
+      const v = parseFloat(methodAmounts[m]) || 0;
+      return `${m}=${v}`;
+    });
+    return `MULTIPLE:${parts.join(';')}`;
+  };
+
+  const validateMultiplePayments = (targetTotal) => {
+    if (selectedMethods.length <= 1) return true;
+    const sum = selectedMethods.reduce((acc, m) => acc + (parseFloat(methodAmounts[m]) || 0), 0);
+    if (Math.abs(sum - targetTotal) > 0.01) {
+      showToast(`Le montant total réparti (${formatFCFA(sum)}) ne correspond pas au montant requis (${formatFCFA(targetTotal)}).`, 'error');
+      return false;
+    }
+    return true;
+  };
+
+  // Reservation Mode state inside CashierView
+  const [showReservationMode, setShowReservationMode] = useState(false);
+  const [reservationAdvanceInput, setReservationAdvanceInput] = useState('');
+
+  // Delivery Mode state
+  const [showDeliveryMode, setShowDeliveryMode] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryFee, setDeliveryFee] = useState('');
+
+  const [expandedCatIds, setExpandedCatIds] = useState([]);
+
+  const toggleExpandCategory = (catId) => {
+    setExpandedCatIds(prev =>
+      prev.includes(catId) ? prev.filter(id => id !== catId) : [...prev, catId]
+    );
+  };
+
+  const handleAddItemToCart = (designationName) => {
+    setCart(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+        categoryName: designationName,
+        price: '',
+        qty: 1,
+      }
+    ]);
+  };
+
+  const handleUpdateCartField = (id, field, rawValue) => {
+    setCart(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      if (field === 'categoryName') return { ...item, categoryName: rawValue };
+      if (rawValue === '' || rawValue === undefined || rawValue === null) {
+        return { ...item, [field]: '' };
+      }
+      const cleanStr = String(rawValue).replace(/[^0-9.]/g, '');
+      if (cleanStr === '') return { ...item, [field]: '' };
+      const value = field === 'qty'
+        ? Math.max(0, parseInt(cleanStr, 10) || 0)
+        : Math.max(0, parseFloat(cleanStr) || 0);
+      return { ...item, [field]: value };
+    }));
+  };
+
+  const handleRemoveFromCart = (id) => setCart(prev => prev.filter(item => item.id !== id));
+  const getCartTotal = () => cart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 0)), 0);
+
+  const getCartItemsForServer = () =>
+    cart.flatMap(item =>
+      Array.from({ length: Number(item.qty) || 1 }, () => ({
+        categoryName: item.categoryName,
+        price: Number(item.price) || 0
+      }))
+    );
+
+  const handleValidateAndPrint = async () => {
+    if (cart.length === 0) {
+      showToast('Le panier est vide', 'error');
+      return;
+    }
+
+    if (!clientName.trim() && !clientPhone.trim()) {
+      showToast('Veuillez renseigner au moins le nom du client ou son numéro de téléphone avant d\'imprimer le ticket.', 'error');
+      return;
+    }
+
+    const invalidLine = cart.find(item => isNaN(item.price) || item.price <= 0 || isNaN(item.qty) || item.qty < 1);
+    if (invalidLine) {
+      showToast(`Vérifiez la ligne "${invalidLine.categoryName}"`, 'error');
+      return;
+    }
+
+    const targetTotal = getCartTotal();
+    if (!validateMultiplePayments(targetTotal)) return;
+
+    const formattedClient = clientName.trim() && clientPhone.trim()
+      ? `${clientName.trim()} (${clientPhone.trim()})`
+      : clientName.trim() || clientPhone.trim();
+
+    setIsSubmittingOrder(true);
+    try {
+      const res = await fetch(`${API_BASE}/invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totalAmount: targetTotal,
+          paymentMethod: getFinalPaymentMethod(),
+          items: getCartItemsForServer(),
+          createdById: currentUser.id,
+          clientName: formattedClient,
+          stationId: getPrintMode() === 'PRINT_AGENT' ? (printStationId || undefined) : undefined,
+        })
+      });
+      const invoiceData = await res.json();
+      if (!res.ok) { showToast(invoiceData.error || 'Erreur', 'error'); setIsSubmittingOrder(false); return; }
+      triggerPrint(invoiceData);
+      window.dispatchEvent(new CustomEvent('pos:dashboard-refresh'));
+      setCart([]);
+      setSelectedMethods(['CASH']);
+      setMethodAmounts({ CASH: '', ONLINE: '', ORANGE_MONEY: '' });
+      setClientName('');
+      setClientPhone('');
+      setIsSubmittingOrder(false);
+    } catch {
+      showToast('Erreur réseau', 'error');
+      setIsSubmittingOrder(false);
+    }
+  };
+
+  const handleConfirmReservation = async () => {
+    if (cart.length === 0) {
+      showToast('Le panier est vide', 'error');
+      return;
+    }
+    if (!clientName.trim()) {
+      showToast('Veuillez entrer le nom du client pour la réservation.', 'error');
+      return;
+    }
+    const advanceNum = parseFloat(reservationAdvanceInput) || 0;
+    if (advanceNum <= 0) {
+      showToast('Veuillez entrer un montant d\'avance valide (> 0 FCFA).', 'error');
+      return;
+    }
+    if (advanceNum > getCartTotal() + 0.01) {
+      showToast(`L'avance (${formatFCFA(advanceNum)}) ne peut pas dépasser le montant total (${formatFCFA(getCartTotal())}).`, 'error');
+      return;
+    }
+
+    if (!validateMultiplePayments(advanceNum)) return;
+
+    const invalidLine = cart.find(item => isNaN(item.price) || item.price <= 0 || isNaN(item.qty) || item.qty < 1);
+    if (invalidLine) {
+      showToast(`Vérifiez la ligne "${invalidLine.categoryName}"`, 'error');
+      return;
+    }
+
+    setIsSubmittingOrder(true);
+    try {
+      const res = await fetch(`${API_BASE}/reservations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: clientName.trim(),
+          clientPhone: clientPhone.trim(),
+          totalAmount: getCartTotal(),
+          items: cart.map(item => ({
+            categoryName: item.categoryName,
+            price: parseFloat(item.price) || 0,
+            qty: parseInt(item.qty, 10) || 1
+          })),
+          createdById: currentUser.id,
+          stationId: getPrintMode() === 'PRINT_AGENT' ? (printStationId || undefined) : undefined,
+          initialPayment: {
+            amount: advanceNum,
+            paymentMethod: getFinalPaymentMethod()
+          }
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || 'Erreur lors de la réservation', 'error'); setIsSubmittingOrder(false); return; }
+      triggerProformaPrint(data);
+      window.dispatchEvent(new CustomEvent('pos:dashboard-refresh'));
+      setCart([]);
+      setSelectedMethods(['CASH']);
+      setMethodAmounts({ CASH: '', ONLINE: '', ORANGE_MONEY: '' });
+      setClientName('');
+      setClientPhone('');
+      setReservationAdvanceInput('');
+      setShowReservationMode(false);
+      setIsSubmittingOrder(false);
+      // Stay on sales page (do not switch tabs)
+    } catch {
+      showToast('Erreur réseau', 'error');
+      setIsSubmittingOrder(false);
+    }
+  };
+
+  // Handler: Confirm delivery order
+  const handleConfirmDelivery = async () => {
+    if (cart.length === 0) {
+      showToast('Le panier est vide', 'error');
+      return;
+    }
+    if (!clientName.trim() && !clientPhone.trim()) {
+      showToast('Veuillez renseigner au moins le nom du client ou son numéro de téléphone.', 'error');
+      return;
+    }
+    const invalidLine = cart.find(item => isNaN(item.price) || item.price <= 0 || isNaN(item.qty) || item.qty < 1);
+    if (invalidLine) {
+      showToast(`Vérifiez la ligne "${invalidLine.categoryName}"`, 'error');
+      return;
+    }
+    const targetTotal = getCartTotal();
+    if (!validateMultiplePayments(targetTotal)) return;
+
+    setIsSubmittingOrder(true);
+    try {
+      const res = await fetch(`${API_BASE}/invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totalAmount: targetTotal,
+          paymentMethod: getFinalPaymentMethod(),
+          items: getCartItemsForServer(),
+          createdById: currentUser.id,
+          clientName: clientName.trim() || null,
+          clientPhone: clientPhone.trim() || null,
+          stationId: getPrintMode() === 'PRINT_AGENT' ? (printStationId || undefined) : undefined,
+          isDelivery: true,
+          deliveryAddress: deliveryAddress.trim() || null,
+          deliveryFee: parseFloat(deliveryFee) || 0,
+        })
+      });
+      const invoiceData = await res.json();
+      if (!res.ok) { showToast(invoiceData.error || 'Erreur', 'error'); setIsSubmittingOrder(false); return; }
+      // Print immediately
+      triggerPrint(invoiceData);
+      window.dispatchEvent(new CustomEvent('pos:dashboard-refresh'));
+      // Reset form
+      setCart([]);
+      setSelectedMethods(['CASH']);
+      setMethodAmounts({ CASH: '', ONLINE: '', ORANGE_MONEY: '' });
+      setClientName('');
+      setClientPhone('');
+      setDeliveryAddress('');
+      setDeliveryFee('');
+      setShowDeliveryMode(false);
+      setIsSubmittingOrder(false);
+      // Stay on sales page (do not switch tabs)
+    } catch {
+      showToast('Erreur réseau', 'error');
+      setIsSubmittingOrder(false);
+    }
+  };
+
+  const filteredCategories = categories.filter(c => {
+    const q = categorySearch.toLowerCase();
+    if (!q) return true;
+    const catMatch = c.name.toLowerCase().includes(q);
+    const subMatch = c.subCategories?.some(s => s.name.toLowerCase().includes(q));
+    return catMatch || subMatch;
+  });
+
+  if (activeTab === 'reservations') {
+    return <ReservationsView categories={categories} currentUser={currentUser} serverOnline={serverOnline} printStationId={printStationId} />;
+  }
+  if (activeTab === 'my_invoices') return <CashierInvoicesView currentUser={currentUser} />;
+  if (activeTab === 'stats') return <CashierStatsView currentUser={currentUser} serverOnline={serverOnline} />;
+  if (activeTab === 'deliveries') return <DeliveriesView currentUser={currentUser} serverOnline={serverOnline} categories={categories} />;
+
+  return (
+    <CheckoutWorkspace
+      categories={categories}
+      categoriesLoading={categoriesLoading}
+      categoriesError={categoriesError}
+      onRetryCategories={onRetryCategories}
+      filteredCategories={filteredCategories}
+      categorySearch={categorySearch}
+      setCategorySearch={setCategorySearch}
+      expandedCatIds={expandedCatIds}
+      toggleExpandCategory={toggleExpandCategory}
+      handleAddItemToCart={handleAddItemToCart}
+      cart={cart}
+      handleUpdateCartField={handleUpdateCartField}
+      handleRemoveFromCart={handleRemoveFromCart}
+      getCartTotal={getCartTotal}
+      clientName={clientName}
+      setClientName={setClientName}
+      clientPhone={clientPhone}
+      setClientPhone={setClientPhone}
+      selectedMethods={selectedMethods}
+      setSelectedMethods={setSelectedMethods}
+      methodAmounts={methodAmounts}
+      setMethodAmounts={setMethodAmounts}
+      showReservationMode={showReservationMode}
+      setShowReservationMode={setShowReservationMode}
+      reservationAdvanceInput={reservationAdvanceInput}
+      setReservationAdvanceInput={setReservationAdvanceInput}
+      showDeliveryMode={showDeliveryMode}
+      setShowDeliveryMode={setShowDeliveryMode}
+      deliveryAddress={deliveryAddress}
+      setDeliveryAddress={setDeliveryAddress}
+      deliveryFee={deliveryFee}
+      setDeliveryFee={setDeliveryFee}
+      isSubmittingOrder={isSubmittingOrder}
+      serverOnline={serverOnline}
+      printStationId={printStationId}
+      stationSelectionRequired={stationSelectionRequired}
+      currentUser={currentUser}
+      handleValidateAndPrint={handleValidateAndPrint}
+      handleConfirmReservation={handleConfirmReservation}
+      handleConfirmDelivery={handleConfirmDelivery}
+    />
+  );
+}

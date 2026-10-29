@@ -1,0 +1,33 @@
+{
+  "name": "pos-locale",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.py",
+  "scripts": {
+    "dev": "py server.py",
+    "start": "py server.py",
+    "seed": "node seed.js",
+    "reset-db": "node reset-db.js",
+    "init-admin": "node init-admin.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@node-escpos/core": "^0.6.0",
+    "@node-escpos/network-adapter": "^0.0.1",
+    "@node-escpos/usb-adapter": "^0.3.1",
+    "@prisma/adapter-better-sqlite3": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pdf-to-printer": "^5.8.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "prisma": "^7.9.1"
+  }
+}

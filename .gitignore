@@ -1,0 +1,32 @@
+node_modules
+frontend/dist/
+.venv/
+__pycache__/
+*.py[cod]
+# Keep environment variables out of version control
+.env
+
+/generated/prisma
+
+# SQLite databases (ignore database files to prevent conflicts and data loss on client machines)
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+prisma/*.sqlite
+prisma/*.sqlite3
+
+# Generated print jobs
+print_jobs/
+ 
+# SQLite databases
+dev.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+prisma/*.db

@@ -1,0 +1,590 @@
+1050:                   <td className="border border-white/10 px-3 py-3" />
+1051:                 </tr>
+1052:               </tfoot>
+1053:             </table>
+1054:           </div>
+1055:         </div>
+1056: 
+1057:         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+1058:           <Field label="Nom du client">
+1059:             <input
+1060:               type="text"
+1061:               placeholder="Entrer le nom du client"
+1062:               value={clientName}
+1063:               onChange={(e) => setClientName(e.target.value)}
+1064:               className={cx(inputCls, 'bg-transparent border-none text-foreground/90')}
+1065:             />
+1066:           </Field>
+1067: 
+1068:           <div className="grid gap-2">
+1069:             <div className="text-[10px] uppercase tracking-wider text-foreground/40">Mode de paiement (optionnel)</div>
+1070:             <div className="grid grid-cols-2 gap-2">
+1071:               <button
+1072:                 onClick={() => setPaymentMethod('CASH')}
+1073:                 className={cx(
+1074:                   'rounded-2xl px-3 py-2 text-xs font-semibold transition',
+1075:                   paymentMethod === 'CASH'
+1076:                     ? 'bg-gold text-black'
+1077:                     : 'bg-white/[0.03] text-foreground/60 hover:bg-white/6'
+1078:                 )}
+1079:               >
+1080:                 Espèces
+1081:               </button>
+1082:               <button
+1083:                 onClick={() => setPaymentMethod('ONLINE')}
+1084:                 className={cx(
+1085:                   'rounded-2xl px-3 py-2 text-xs font-semibold transition',
+1086:                   paymentMethod === 'ONLINE'
+1087:                     ? 'bg-gold text-black'
+1088:                     : 'bg-white/[0.03] text-foreground/60 hover:bg-white/6'
+1089:                 )}
+1090:               >
+1091:                 Mobile Money
+1092:               </button>
+1093:             </div>
+1094:           </div>
+1095:         </div>
+1096: 
+1097:         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+1098:           <div className="p-2 text-sm text-foreground/60">
+1099:             <div className="uppercase tracking-wider text-[10px] text-foreground/40">Montant final</div>
+1100:             <div className="mt-1 text-2xl font-semibold text-gold">{formatFCFA(getCartTotal())}</div>
+1101:           </div>
+1102:           <button
+1103:             onClick={handleValidateAndPrint}
+1104:             disabled={isSubmittingOrder || cart.length === 0 || !serverOnline}
+1105:             className="w-full rounded-2xl bg-gold py-3 text-xs font-semibold text-black transition hover:bg-gold/85 disabled:opacity-40 disabled:pointer-events-none sm:w-auto sm:px-10"
+1106:           >
+1107:             {isSubmittingOrder ? 'Enregistrement...' : 'Valider Ticket'}
+1108:           </button>
+1109:         </div>
+1110:       </div>
+1111:     </div>
+1112:   </div>
+1113: )}
+1114: 
+1115:         {/* --------------------------------------------------------------------
+1116:             VIEW 3: ADMIN CONSOLE
+1117:            -------------------------------------------------------------------- */}
+1118:         {currentView === 'admin' && currentUser?.role === 'ADMIN' && (
+1119:           <div className="flex-1 min-h-0 flex overflow-hidden">
+1120: 
+1121:             <aside className="w-64 shrink-0 pr-4">
+1122:               <div className="sticky top-0 space-y-4">
+1123:                 <div className="text-xs uppercase tracking-[0.24em] text-foreground/40">Espace Admin</div>
+1124:                 <div className="space-y-1">
+1125:                   {adminTabs.map(tab => (
+1126:                     <button
+1127:                       key={tab.id}
+1128:                       onClick={() => setAdminTab(tab.id)}
+1129:                       className={cx(
+1130:                         'flex w-full items-center gap-2 rounded-2xl px-3 py-3 text-left text-sm font-semibold transition',
+1131:                         adminTab === tab.id ? 'bg-white/[0.08] text-gold' : 'text-foreground/70 hover:bg-white/[0.04] hover:text-foreground'
+1132:                       )}
+1133:                     >
+1134:                       {tab.icon}
+1135:                       <span>{tab.label}</span>
+1136:                     </button>
+1137:                   ))}
+1138:                 </div>
+1139:               </div>
+1140:             </aside>
+1141: 
+1142:             <div className="min-h-0 flex-1 overflow-y-auto">
+1143:               <div className="space-y-6 pb-6">
+1144:                 <div>
+1145:                   <h2 className="text-xl font-semibold text-foreground">Console Admin</h2>
+1146:                   <p className="text-sm text-foreground/40">Comptabilité, journal et rapport</p>
+1147:                 </div>
+1148: 
+1149:                 {/* DASHBOARD */}
+1150:                 {adminTab === 'dashboard' && (
+1151:                   <div className="space-y-6">
+1152:                     <section className="grid gap-3 sm:grid-cols-3">
+1153:                       {[
+1154:                         { label: 'Aujourd’hui', data: stats.today },
+1155:                         { label: 'Cette semaine', data: stats.week },
+1156:                         { label: 'Ce mois', data: stats.month },
+1157:                       ].map(({ label, data }) => (
+1158:                         <div key={label} className="rounded-2xl bg-white/[0.015] p-4 text-sm text-foreground/80">
+1159:                           <div className="text-[10px] uppercase tracking-[0.24em] text-foreground/40">{label}</div>
+1160:                           <div className="mt-3 text-2xl font-semibold text-gold">{formatFCFA(data?.total || 0)}</div>
+1161:                           <div className="mt-1 text-xs text-foreground/40">{data?.count || 0} ventes</div>
+1162:                         </div>
+1163:                       ))}
+1164:                     </section>
+1165: 
+1166:                     <section className="space-y-4">
+1167:                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+1168:                         <div>
+1169:                           <h3 className="text-base font-semibold text-foreground">Journal des Ventes</h3>
+1170:                           <p className="text-xs text-foreground/40">Rechercher, filtrer et parcourir le journal de vente.</p>
+1171:                         </div>
+1172:                       </div>
+1173: 
+1174:                       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+1175:                         <div className="relative">
+1176:                           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/30" />
+1177:                           <input
+1178:                             type="text"
+1179:                             placeholder="Rechercher un ticket..."
+1180:                             value={invoiceSearch}
+1181:                             onChange={(e) => setInvoiceSearch(e.target.value)}
+1182:                             className={cx(inputCls, 'w-full pl-9')}
+1183:                           />
+1184:                         </div>
+1185:                         <input
+1186:                           type="date"
+1187:                           value={filterDate}
+1188:                           onChange={(e) => setFilterDate(e.target.value)}
+1189:                           className={cx(inputCls, 'w-full sm:w-auto')}
+1190:                         />
+1191:                         <button
+1192:                           onClick={() => setShowHistoryFilters(v => !v)}
+1193:                           className={cx(
+1194:                             'rounded-2xl px-3 py-2 text-xs font-semibold transition',
+1195:                             showHistoryFilters ? 'bg-white/[0.08] text-gold' : 'bg-white/[0.03] text-foreground/70 hover:bg-white/[0.06]'
+1196:                           )}
+1197:                         >
+1198:                           Filtres
+1199:                         </button>
+1200:                       </div>
+1201: 
+1202:                       {showHistoryFilters && (
+1203:                         <div className="grid gap-3 sm:grid-cols-2">
+1204:                           <Field label="Caissière">
+1205:                             <select
+1206:                               value={filterCashier}
+1207:                               onChange={(e) => setFilterCashier(e.target.value)}
+1208:                               className={inputCls}
+1209:                             >
+1210:                               <option value="" className="bg-background">Tous les utilisateurs</option>
+1211:                               {users.map(u => <option key={u.id} value={u.id} className="bg-background">{u.name}</option>)}
+1212:                             </select>
+1213:                           </Field>
+1214:                           <Field label="Statut">
+1215:                             <select
+1216:                               value={filterStatus}
+1217:                               onChange={(e) => setFilterStatus(e.target.value)}
+1218:                               className={inputCls}
+1219:                             >
+1220:                               <option value="" className="bg-background">Tous les statuts</option>
+1221:                               <option value="VALIDATED" className="bg-background">Validée</option>
+1222:                               <option value="CANCELLED" className="bg-background">Annulée</option>
+1223:                             </select>
+1224:                           </Field>
+1225:                         </div>
+1226:                       )}
+1227: 
+1228:                       <div className="overflow-hidden rounded-2xl bg-white/[0.01]">
+1229:                         <div className="overflow-x-auto">
+1230:                           <table className="w-full border-separate border-spacing-0 text-left text-xs">
+1231:                             <thead>
+1232:                               <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-foreground/35">
+1233:                                 <th className="p-3">Numéro</th>
+1234:                                 <th className="p-3">Caissière</th>
+1235:                                 <th className="p-3">Mode</th>
+1236:                                 <th className="p-3 text-right">Montant</th>
+1237:                                 <th className="p-3">Statut</th>
+1238:                                 <th className="p-3 text-center">Actions</th>
+1239:                               </tr>
+1240:                             </thead>
+1241:                             <tbody className="divide-y divide-white/5">
+1242:                               {paginatedInvoices.map(inv => (
+1243:                                 <tr key={inv.id} className="hover:bg-white/[0.02]">
+1244:                                   <td className="p-3 font-mono font-semibold text-foreground">{inv.invoiceNumber}</td>
+1245:                                   <td className="p-3 font-medium text-foreground">{inv.createdBy.name}</td>
+1246:                                   <td className="p-3 text-foreground/50">{inv.paymentMethod === 'CASH' ? 'Espèces' : 'Mobile'}</td>
+1247:                                   <td className="p-3 text-right font-mono font-semibold text-gold">{formatFCFA(inv.totalAmount)}</td>
+1248:                                   <td className="p-3"><StatusChip tone={inv.status === 'VALIDATED' ? 'emerald' : 'red'} label={inv.status === 'VALIDATED' ? 'Validée' : 'Annulée'} /></td>
+1249:                                   <td className="p-3">
+1250:                                     <div className="flex items-center justify-center gap-1">
+1251:                                       <IconButton icon={<Printer className="h-3.5 w-3.5" />} onClick={() => triggerPrint(inv)} title="Réimprimer" />
+1252:                                       {inv.status === 'VALIDATED' && (
+1253:                                         <IconButton
+1254:                                           icon={<Ban className="h-3.5 w-3.5" />}
+1255:                                           onClick={() => { setInvoiceToCancel(inv); setCancelError(''); setCancelPin(''); setCancelReason(''); setCancelReasonOption(''); }}
+1256:                                           tone="danger"
+1257:                                           title="Annuler"
+1258:                                         />
+1259:                                       )}
+1260:                                     </div>
+1261:                                   </td>
+1262:                                 </tr>
+1263:                               ))}
+1264:                             </tbody>
+1265:                           </table>
+1266:                         </div>
+1267:                         {paginatedInvoices.length === 0 && (
+1268:                           <p className="py-10 text-center text-sm italic text-foreground/30">Aucune vente ne correspond à la recherche</p>
+1269:                         )}
+1270:                       </div>
+1271: 
+1272:                       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-foreground/60">
+1273:                         <span>{filteredSortedInvoices.length} résultats</span>
+1274:                         <div className="flex items-center gap-2">
+1275:                           <button
+1276:                             type="button"
+1277:                             onClick={() => setInvoicePage(prev => Math.max(1, prev - 1))}
+1278:                             disabled={invoicePage <= 1}
+1279:                             className="rounded-lg px-2 py-1 transition hover:bg-white/[0.04] disabled:opacity-40"
+1280:                           >
+1281:                             Préc
+1282:                           </button>
+1283:                           <span>Page {invoicePage} / {invoicePageCount}</span>
+1284:                           <button
+1285:                             type="button"
+1286:                             onClick={() => setInvoicePage(prev => Math.min(invoicePageCount, prev + 1))}
+1287:                             disabled={invoicePage >= invoicePageCount}
+1288:                             className="rounded-lg px-2 py-1 transition hover:bg-white/[0.04] disabled:opacity-40"
+1289:                           >
+1290:                             Suiv
+1291:                           </button>
+1292:                         </div>
+1293:                       </div>
+1294:                     </section>
+1295: 
+1296:                     <section className="space-y-4">
+1297:                       <div>
+1298:                         <h3 className="text-base font-semibold text-foreground">Rapport Journalier</h3>
+1299:                         <p className="text-xs text-foreground/40">Synthèse journalière et impression.</p>
+1300:                       </div>
+1301:                       <div className="grid gap-3 sm:grid-cols-3">
+1302:                         <div className="rounded-2xl bg-white/[0.015] p-4 text-sm text-foreground/80">
+1303:                           <div className="text-[10px] uppercase tracking-[0.24em] text-foreground/40">Total CA</div>
+1304:                           <div className="mt-2 text-2xl font-semibold text-gold">{formatFCFA(stats.today?.total || 0)}</div>
+1305:                         </div>
+1306:                         <div className="rounded-2xl bg-white/[0.015] p-4 text-sm text-foreground/80">
+1307:                           <div className="text-[10px] uppercase tracking-[0.24em] text-foreground/40">Ventes validées</div>
+1308:                           <div className="mt-2 text-2xl font-semibold text-foreground">{stats.today?.count || 0}</div>
+1309:                         </div>
+1310:                         <div className="rounded-2xl bg-white/[0.015] p-4 text-sm text-foreground/80">
+1311:                           <div className="text-[10px] uppercase tracking-[0.24em] text-foreground/40">Moyenne</div>
+1312:                           <div className="mt-2 text-2xl font-semibold text-foreground">{formatFCFA(Math.round((stats.today?.total || 0) / Math.max(1, stats.today?.count || 1)))}</div>
+1313:                         </div>
+1314:                       </div>
+1315:                       <div className="flex flex-wrap gap-2">
+1316:                         <button
+1317:                           onClick={handleGenerateZReport}
+1318:                           className="rounded-2xl bg-gold px-4 py-2 text-xs font-semibold text-black transition hover:bg-gold/85"
+1319:                         >
+1320:                           Actualiser
+1321:                         </button>
+1322:                         {zReportData && (
+1323:                           <button
+1324:                             onClick={() => triggerPrint({ isZReport: true, zReport: zReportData, createdBy: currentUser })}
+1325:                             className="rounded-2xl bg-white/[0.08] px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-white/[0.12]"
+1326:                           >
+1327:                             Imprimer
+1328:                           </button>
+1329:                         )}
+1330:                       </div>
+1331:                       {zReportData && (
+1332:                         <div className="space-y-3 rounded-2xl bg-white/[0.015] p-4 text-sm text-foreground/80">
+1333:                           <div className="flex flex-col gap-2 border-b border-white/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
+1334:                             <h4 className="text-sm font-semibold text-foreground">Synthèse du {zReportData.date}</h4>
+1335:                             <button
+1336:                               onClick={() => triggerPrint({ isZReport: true, zReport: zReportData, createdBy: currentUser })}
+1337:                               className="flex items-center gap-1.5 rounded-2xl bg-gold px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-gold/85"
+1338:                             >
+1339:                               <Printer className="h-3.5 w-3.5" />
+1340:                               <span>Imprimer Z</span>
+1341:                             </button>
+1342:                           </div>
+1343:                           <div className="grid gap-3 sm:grid-cols-2">
+1344:                             <div className="rounded-lg bg-white/[0.03] p-3">
+1345:                               <span className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-foreground/35">Total CA</span>
+1346:                               <span className="mt-2 font-mono text-sm font-semibold text-gold">{formatFCFA(zReportData.totalSales)}</span>
+1347:                             </div>
+1348:                             <div className="rounded-lg bg-white/[0.03] p-3">
+1349:                               <span className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-foreground/35">Espèces</span>
+1350:                               <span className="mt-2 font-mono text-sm font-semibold text-foreground">{formatFCFA(zReportData.totalCash)}</span>
+1351:                             </div>
+1352:                           </div>
+1353:                         </div>
+1354:                       )}
+1355:                     </section>
+1356:                   </div>
+1357:                 )}
+1358: 
+1359:                 {/* CATEGORIES TAB */}
+1360:               {adminTab === 'categories' && (
+1361:                 <div className="space-y-6">
+1362:                   <div>
+1363:                     <h3 className="text-base font-semibold text-foreground">Gestion des Boutons Articles</h3>
+1364:                     <p className="text-xs text-foreground/40">Configurez les catégories disponibles sur la caisse</p>
+1365:                   </div>
+1366: 
+1367:                   <form onSubmit={handleCreateCategory} className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+1368:                     <h4 className="text-[10px] font-semibold uppercase tracking-widest text-foreground/40">Ajouter un bouton</h4>
+1369:                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+1370:                       <Field label="Nom">
+1371:                         <input
+1372:                           type="text"
+1373:                           placeholder="Ex: Robe, Chaussures..."
+1374:                           value={newCategoryName}
+1375:                           onChange={(e) => setNewCategoryName(e.target.value)}
+1376:                           className={inputCls}
+1377:                         />
+1378:                       </Field>
+1379:                       <Field label="Couleur">
+1380:                         <select
+1381:                           value={newCategoryColor}
+1382:                           onChange={(e) => setNewCategoryColor(e.target.value)}
+1383:                           className={inputCls}
+1384:                         >
+1385:                           <option value="bg-gold" className="bg-background">Gold</option>
+1386:                           <option value="bg-emerald-500" className="bg-background">Vert</option>
+1387:                           <option value="bg-amber-500" className="bg-background">Amber</option>
+1388:                           <option value="bg-red-500" className="bg-background">Rouge</option>
+1389:                         </select>
+1390:                       </Field>
+1391:                     </div>
+1392:                     <button type="submit" className="rounded-lg bg-gold px-4 py-2 text-xs font-semibold text-black transition hover:bg-gold/85">
+1393:                       Créer le bouton
+1394:                     </button>
+1395:                     {categoryCreateError && <p className="text-xs font-semibold text-red-400">{categoryCreateError}</p>}
+1396:                     {categoryCreateSuccess && <p className="text-xs font-semibold text-emerald-400">{categoryCreateSuccess}</p>}
+1397:                   </form>
+1398: 
+1399:                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+1400:                     {categories.map(cat => (
+1401:                       <div key={cat.id} className="relative flex items-center justify-between overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] p-3">
+1402:                         <div className={cx('absolute bottom-0 left-0 top-0 w-1.5', cat.color || 'bg-gold')} />
+1403:                         <span className="pl-2 text-xs font-semibold text-foreground">{cat.name}</span>
+1404:                         <div className="flex items-center gap-0.5">
+1405:                           <IconButton icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => handleOpenEditCategory(cat)} title="Modifier" />
+1406:                           <IconButton icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => { setCategoryToDelete(cat); setCategoryDeleteError(''); }} tone="danger" title="Supprimer" />
+1407:                         </div>
+1408:                       </div>
+1409:                     ))}
+1410:                   </div>
+1411:                   {categories.length === 0 && (
+1412:                     <p className="py-6 text-center text-sm italic text-foreground/30">Aucune catégorie configurée</p>
+1413:                   )}
+1414:                 </div>
+1415:               )}
+1416: 
+1417:               {/* Category Delete Confirm Modal */}
+1418:               {categoryToDelete && (
+1419:                 <Modal onClose={() => setCategoryToDelete(null)}>
+1420:                   <div className="mb-4 flex items-start gap-3">
+1421:                     <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-400 shrink-0">
+1422:                       <AlertTriangle className="h-5 w-5" />
+1423:                     </div>
+1424:                     <div>
+1425:                       <h3 className="text-base font-semibold text-foreground">Supprimer la catégorie</h3>
+1426:                       <p className="mt-0.5 text-xs text-foreground/40">
+1427:                         Confirmez-vous la suppression de "{categoryToDelete.name}" ? Cette action est irréversible.
+1428:                       </p>
+1429:                     </div>
+1430:                   </div>
+1431:                   {categoryDeleteError && <p className="mb-3 text-xs font-semibold text-red-400">{categoryDeleteError}</p>}
+1432:                   <div className="flex gap-2">
+1433:                     <button
+1434:                       onClick={() => setCategoryToDelete(null)}
+1435:                       className="flex-1 rounded-lg border border-white/10 py-2.5 text-xs font-semibold text-foreground/60 transition hover:bg-white/6"
+1436:                     >
+1437:                       Annuler
+1438:                     </button>
+1439:                     <button
+1440:                       onClick={() => handleDeleteCategory(categoryToDelete.id)}
+1441:                       className="flex-1 rounded-lg bg-red-500/90 py-2.5 text-xs font-semibold text-white transition hover:bg-red-500"
+1442:                     >
+1443:                       Supprimer
+1444:                     </button>
+1445:                   </div>
+1446:                 </Modal>
+1447:               )}
+1448: 
+1449:               {/* Category Edit Modal */}
+1450:               {editingCategory && (
+1451:                 <Modal onClose={() => setEditingCategory(null)}>
+1452:                   <h3 className="mb-0.5 text-base font-semibold text-foreground">Modifier la Catégorie</h3>
+1453:                   <p className="mb-4 text-xs text-foreground/40">Code PIN Admin requis pour validation</p>
+1454: 
+1455:                   <form onSubmit={handleUpdateCategory} className="space-y-3">
+1456:                     <Field label="Nom de la catégorie">
+1457:                       <input
+1458:                         type="text"
+1459:                         autoFocus
+1460:                         value={editCatName}
+1461:                         onChange={(e) => setEditCatName(e.target.value)}
+1462:                         className={inputCls}
+1463:                       />
+1464:                     </Field>
+1465:                     <Field label="Couleur">
+1466:                       <select
+1467:                         value={editCatColor}
+1468:                         onChange={(e) => setEditCatColor(e.target.value)}
+1469:                         className={inputCls}
+1470:                       >
+1471:                         <option value="bg-gold" className="bg-background">Gold</option>
+1472:                         <option value="bg-emerald-500" className="bg-background">Vert</option>
+1473:                         <option value="bg-amber-500" className="bg-background">Amber</option>
+1474:                         <option value="bg-red-500" className="bg-background">Rouge</option>
+1475:                       </select>
+1476:                     </Field>
+1477:                     <Field label="PIN Admin">
+1478:                       <input
+1479:                         type="password"
+1480:                         maxLength="4"
+1481:                         placeholder="••••"
+1482:                         value={editCatPin}
+1483:                         onChange={(e) => setEditCatPin(e.target.value)}
+1484:                         className={cx(inputCls, 'text-center text-sm font-semibold font-mono')}
+1485:                       />
+1486:                     </Field>
+1487:                     {editCatError && <p className="text-[11px] font-semibold text-red-400">{editCatError}</p>}
+1488:                     <button type="submit" className="w-full rounded-lg bg-gold py-2.5 text-xs font-semibold text-black transition hover:bg-gold/85">
+1489:                       Enregistrer les modifications
+1490:                     </button>
+1491:                   </form>
+1492:                 </Modal>
+1493:               )}
+1494: 
+1495:               {/* USERS TAB */}
+1496:               {adminTab === 'users' && (
+1497:                 <div className="space-y-6">
+1498:                   <div>
+1499:                     <h3 className="text-base font-semibold text-foreground">Gestion du Personnel</h3>
+1500:                     <p className="text-xs text-foreground/40">Ajoutez des comptes caissières</p>
+1501:                   </div>
+1502: 
+1503:                   <form onSubmit={handleCreateCashier} className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+1504:                     <h4 className="text-[10px] font-semibold uppercase tracking-widest text-foreground/40">Ajouter une caissière</h4>
+1505:                     <div className="flex flex-col gap-2 sm:flex-row">
+1506:                       <input
+1507:                         type="text"
+1508:                         placeholder="Nom complet..."
+1509:                         value={newCashierName}
+1510:                         onChange={(e) => setNewCashierName(e.target.value)}
+1511:                         className={cx(inputCls, 'flex-1')}
+1512:                       />
+1513:                       <button type="submit" className="rounded-lg bg-gold px-4 py-2 text-xs font-semibold text-black transition hover:bg-gold/85">
+1514:                         Créer
+1515:                       </button>
+1516:                     </div>
+1517:                     {cashierCreateError && <p className="text-xs font-semibold text-red-400">{cashierCreateError}</p>}
+1518:                     {cashierCreateSuccess && <p className="text-xs font-semibold text-emerald-400">{cashierCreateSuccess}</p>}
+1519:                   </form>
+1520: 
+1521:                   <div className="space-y-2">
+1522:                     {users.map(u => (
+1523:                       <div key={u.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] p-3 text-xs">
+1524:                         <div className="flex items-center gap-2.5">
+1525:                           <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-xs font-semibold text-gold">
+1526:                             {u.name.charAt(0).toUpperCase()}
+1527:                           </div>
+1528:                           <span className="font-semibold text-foreground">{u.name}</span>
+1529:                         </div>
+1530:                         <span className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-semibold text-foreground/40">
+1531:                           {u.role === 'ADMIN' ? 'Admin' : 'Caissière'}
+1532:                         </span>
+1533:                       </div>
+1534:                     ))}
+1535:                   </div>
+1536:                 </div>
+1537:               )}
+1538: 
+1539:               {/* Z-REPORT TAB */}
+1540:               {adminTab === 'z-report' && (
+1541:                 <div className="space-y-5">
+1542:                   <div>
+1543:                     <h3 className="text-base font-semibold text-foreground">Rapport Z de Clôture</h3>
+1544:                     <p className="text-xs text-foreground/40">Générez la clôture journalière</p>
+1545:                   </div>
+1546: 
+1547:                   <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6 text-center sm:py-8">
+1548:                     <Award className="mx-auto mb-3 h-9 w-9 text-gold" />
+1549:                     <h4 className="mb-1 text-sm font-semibold text-foreground">Clôturer la journée comptable</h4>
+1550:                     <p className="mx-auto mb-4 max-w-xs text-xs text-foreground/40">Génère le récapitulatif définitif des ventes pour impression.</p>
+1551:                     <button onClick={handleGenerateZReport} className="rounded-lg bg-gold px-5 py-2.5 text-xs font-semibold text-black transition hover:bg-gold/85">
+1552:                       Générer le rapport Z
+1553:                     </button>
+1554:                   </div>
+1555: 
+1556:                   {zReportData && (
+1557:                     <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-5">
+1558:                       <div className="flex flex-col gap-2 border-b border-white/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
+1559:                         <h4 className="text-sm font-semibold text-foreground">Synthèse du {zReportData.date}</h4>
+1560:                         <button onClick={() => triggerPrint({ isZReport: true, zReport: zReportData, createdBy: currentUser })} className="flex items-center gap-1.5 rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-gold/85">
+1561:                           <Printer className="h-3.5 w-3.5" />
+1562:                           <span>Imprimer Z</span>
+1563:                         </button>
+1564:                       </div>
+1565:                       <div className="grid grid-cols-2 gap-3 text-xs">
+1566:                         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+1567:                           <span className="block text-[10px] font-semibold uppercase tracking-wider text-foreground/35">Total CA</span>
+1568:                           <span className="font-mono text-sm font-semibold tabular-nums text-gold">{formatFCFA(zReportData.totalSales)}</span>
+1569:                         </div>
+1570:                         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+1571:                           <span className="block text-[10px] font-semibold uppercase tracking-wider text-foreground/35">Espèces</span>
+1572:                           <span className="font-mono text-sm font-semibold tabular-nums text-foreground">{formatFCFA(zReportData.totalCash)}</span>
+1573:                         </div>
+1574:                       </div>
+1575:                     </div>
+1576:                   )}
+1577:                 </div>
+1578:               )}
+1579: 
+1580:             </div>
+1581: 
+1582:             {/* Cancel Modal */}
+1583:             {invoiceToCancel && (
+1584:               <Modal onClose={() => setInvoiceToCancel(null)}>
+1585:                 <h3 className="mb-1 text-base font-semibold text-red-400">Annuler la Facture</h3>
+1586:                 <p className="mb-4 text-xs text-foreground/40">Saisissez le motif et votre code PIN Admin</p>
+1587: 
+1588:                 <div className="mb-4 space-y-3">
+1589:                   <Field label="Motif">
+1590:                     <select
+1591:                       value={cancelReasonOption}
+1592:                       onChange={(e) => {
+1593:                         const val = e.target.value;
+1594:                         setCancelReasonOption(val);
+1595:                         setCancelReason(val === 'Autre' ? '' : val);
+1596:                       }}
+1597:                       className={inputCls}
+1598:                     >
+1599:                       <option value="" className="bg-background">Sélectionner un motif...</option>
+1600:                       {CANCEL_REASONS.map(r => <option key={r} value={r} className="bg-background">{r}</option>)}
+1601:                     </select>
+1602:                   </Field>
+1603:                   {cancelReasonOption === 'Autre' && (
+1604:                     <input
+1605:                       type="text"
+1606:                       placeholder="Précisez le motif..."
+1607:                       value={cancelReason}
+1608:                       onChange={(e) => setCancelReason(e.target.value)}
+1609:                       className={inputCls}
+1610:                       autoFocus
+1611:                     />
+1612:                   )}
+1613:                   <Field label="PIN Admin">
+1614:                     <input
+1615:                       type="password"
+1616:                       maxLength="4"
+1617:                       placeholder="••••"
+1618:                       value={cancelPin}
+1619:                       onChange={(e) => setCancelPin(e.target.value)}
+1620:                       className={cx(inputCls, 'text-center text-sm font-semibold font-mono')}
+1621:                     />
+1622:                   </Field>
+1623:                 </div>
+1624: 
+1625:                 {cancelError && <p className="mb-3 text-xs font-semibold text-red-400">{cancelError}</p>}
+1626: 
+1627:                 <button onClick={handleCancelInvoiceSubmit} className="w-full rounded-lg bg-red-500/90 py-2.5 text-xs font-semibold text-white transition hover:bg-red-500">
+1628:                   Confirmer l'annulation
+1629:                 </button>
+1630:               </Modal>
+1631:             )}
+1632: 
+1633:           </div>
+1634:         )}
+1635:       </main>
+1636:     </div>
+1637:   );
+1638: }
+
