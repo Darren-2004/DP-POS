@@ -536,9 +536,18 @@ def reservation_payments(store, query):
         if bounds:
             clauses.append('p.createdAt BETWEEN ? AND ?')
             parameters.extend(bounds)
+    elif query.get("startDate") and query.get("endDate"):
+        start = _local_day_bounds(query["startDate"])
+        end = _local_day_bounds(query["endDate"])
+        if start and end:
+            clauses.append('p.createdAt BETWEEN ? AND ?')
+            parameters.extend((start[0], end[1]))
     if query.get("cashierId"):
         clauses.append('p.createdById = ?')
         parameters.append(query["cashierId"])
+    if query.get("shopType") in {"HOMME", "FEMME"}:
+        clauses.append('r.shopType = ?')
+        parameters.append(query["shopType"])
     where = " AND ".join(clauses)
     with store._connect() as connection:
         rows = connection.execute(

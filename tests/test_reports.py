@@ -161,6 +161,5 @@ class ReportParityTests(unittest.TestCase):
         self.assertEqual(shop_two_sales["grandTotal"], 0)
         self.assertEqual(shop_two_sales["products"], [])
 
-
 if __name__ == "__main__":
     unittest.main()

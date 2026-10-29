@@ -29,7 +29,7 @@ export default function DateRangeFilter({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => onPreset && onPreset('today')} className={presetButton(startDate === endDate)}>
+          <button type="button" onClick={() => onPreset && onPreset('today')} className={presetButton(Boolean(startDate && startDate === endDate))}>
             {labels.today}
           </button>
           <button type="button" onClick={() => onPreset && onPreset('week')} className={presetButton(false)}>

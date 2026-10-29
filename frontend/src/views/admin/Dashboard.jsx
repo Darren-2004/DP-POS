@@ -1,30 +1,24 @@
 import React, { useState, useMemo } from 'react';
 import {
   TrendingUp,
-  CreditCard,
   Banknote,
   Smartphone,
   Calendar,
   Users,
   ShoppingBag,
   Scissors,
-  Clock,
-  Store,
-  BarChart3,
-  LineChart as LineChartIcon,
-  RefreshCw,
+  Printer,
   Sparkles,
   ArrowUpRight,
   ArrowDownRight,
   Minus,
 } from 'lucide-react';
-import { PageHeader, LoadingState, EmptyState } from '../../components/DesignSystem';
+import { PageHeader, LoadingState } from '../../components/DesignSystem';
 import { formatFCFA, getTodayDateStr } from '../../utils/helpers';
-import BarChart from '../../components/charts/BarChart';
-import LineChart from '../../components/charts/LineChart';
 import DualLineChart from '../../components/charts/DualLineChart';
 import DonutChart from '../../components/charts/DonutChart';
 import HorizontalBarChart from '../../components/charts/HorizontalBarChart';
+import DateRangeFilter from '../../components/DateRangeFilter';
 
 export default function Dashboard({
   stats = {},
@@ -32,19 +26,20 @@ export default function Dashboard({
   reservationPayments = [],
   reservations = [],
   users = [],
-  filterDate,
-  setFilterDate,
+  startDate,
+  endDate,
+  setStartDate,
+  setEndDate,
   filterCashier,
   setFilterCashier,
-  fetchInvoices,
   loading = false,
   shopType = null,
   onScopeChange,
 }) {
-  const [chartType, setChartType] = useState('bar'); // 'bar' or 'line'
   const [comparisonPeriod, setComparisonPeriod] = useState('months'); // 'months' or 'week'
 
-  const isAllDates = !filterDate;
+  const isAllDates = !startDate || !endDate;
+  const periodLabel = isAllDates ? 'toutes les dates' : startDate === endDate ? `du ${startDate}` : `du ${startDate} au ${endDate}`;
   const activeShopLabel =
     shopType === 'HOMME' ? 'Shop 1 (Homme)' : shopType === 'FEMME' ? 'Shop 2 (Femme)' : 'Tous les shops (Réseau)';
 
@@ -64,8 +59,6 @@ export default function Dashboard({
     validatedInvoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
 
   const totalTickets = analytics?.ratios?.totalTickets ?? validatedInvoices.length;
-  const avgBasket =
-    analytics?.ratios?.averageBasket ?? (totalTickets > 0 ? Math.round(totalRev / totalTickets) : 0);
 
   // Shop revenue calculation for the Pie Chart (Shop 1 vs Shop 2)
   const allValidated = (Array.isArray(invoices) ? invoices : []).filter(
@@ -173,59 +166,6 @@ export default function Dashboard({
     }
   }, [invoices, comparisonPeriod]);
 
-  // Fallback timeline generator for main chart
-  let timeline = analytics.timeline || [];
-  if (!timeline || timeline.length === 0) {
-    if (filterDate) {
-      const buckets = {};
-      for (let h = 8; h <= 22; h++) {
-        const label = `${String(h).padStart(2, '0')}h`;
-        buckets[label] = { label, total: 0, shop1: 0, shop2: 0, count: 0 };
-      }
-      validatedInvoices.forEach((inv) => {
-        if (inv.createdAt) {
-          const d = new Date(inv.createdAt);
-          const h = d.getHours();
-          const targetH = Math.max(8, Math.min(22, h));
-          const label = `${String(targetH).padStart(2, '0')}h`;
-          const amt = Number(inv.totalAmount) || 0;
-          if (buckets[label]) {
-            buckets[label].total += amt;
-            buckets[label].count += 1;
-            if (inv.shopType === 'HOMME') buckets[label].shop1 += amt;
-            else buckets[label].shop2 += amt;
-          }
-        }
-      });
-      timeline = Object.values(buckets);
-    } else {
-      const dateMap = {};
-      validatedInvoices.forEach((inv) => {
-        const dStr = inv.createdAt ? inv.createdAt.slice(0, 10) : getTodayDateStr();
-        const amt = Number(inv.totalAmount) || 0;
-        if (!dateMap[dStr]) {
-          const parts = dStr.split('-');
-          dateMap[dStr] = {
-            label: parts.length === 3 ? `${parts[2]}/${parts[1]}` : dStr,
-            fullDate: dStr,
-            total: 0,
-            shop1: 0,
-            shop2: 0,
-            count: 0,
-          };
-        }
-        dateMap[dStr].total += amt;
-        dateMap[dStr].count += 1;
-        if (inv.shopType === 'HOMME') dateMap[dStr].shop1 += amt;
-        else dateMap[dStr].shop2 += amt;
-      });
-      timeline = Object.values(dateMap).sort((a, b) => (a.fullDate > b.fullDate ? 1 : -1));
-      if (timeline.length === 0) {
-        timeline = [{ label: "Aujourd'hui", total: 0, shop1: 0, shop2: 0, count: 0 }];
-      }
-    }
-  }
-
   // Payment breakdown data
   const pb = analytics.paymentBreakdown || {};
   let cashTotal = pb.CASH;
@@ -265,37 +205,9 @@ export default function Dashboard({
     categoryBreakdown = Object.values(catMap).sort((a, b) => b.revenue - a.revenue);
   }
 
-  // Rush hours data
-  const rushHours = analytics.rushHours || [
-    { slot: '08h - 10h', count: 0, revenue: 0 },
-    { slot: '10h - 12h', count: 0, revenue: 0 },
-    { slot: '12h - 14h', count: 0, revenue: 0 },
-    { slot: '14h - 16h', count: 0, revenue: 0 },
-    { slot: '16h - 18h', count: 0, revenue: 0 },
-    { slot: '18h - 20h', count: 0, revenue: 0 },
-    { slot: '20h - 22h', count: 0, revenue: 0 },
-  ];
-  const rushHoursData = rushHours.map((r) => ({
-    label: r.slot.replace(' - ', '-'),
-    total: r.revenue,
-    count: r.count,
-  }));
-
   const topServices = analytics.topServices || categoryBreakdown.slice(0, 10);
   const topProducts = analytics.topProducts || [];
   const ratios = analytics.ratios || {};
-  const shopComparison = analytics.shopComparison || {};
-
-  // Quick preset handlers
-  const setTodayPreset = () => {
-    setFilterDate(getTodayDateStr());
-    if (setFilterCashier) setFilterCashier('');
-  };
-
-  const setAllDatesPreset = () => {
-    setFilterDate('');
-    if (setFilterCashier) setFilterCashier('');
-  };
 
   return (
     <div className="space-y-6 bg-white pb-12">
@@ -306,34 +218,8 @@ export default function Dashboard({
           title={`Tableau de Bord – ${activeShopLabel}`}
           description={
             shopType
-              ? `Indicateurs financiers, ventes, prestations et affluence de ${activeShopLabel}${isAllDates ? ' sur tout l’historique.' : ` du ${filterDate}.`}`
-              : `Vue consolidée du réseau (Shop 1 & Shop 2) – Ventes, stock, panier moyen et palmarès${isAllDates ? ' sur toutes les dates.' : ` du ${filterDate}.`}`
-          }
-          actions={
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={setTodayPreset}
-                className={`rounded px-3.5 py-1.5 text-xs font-semibold transition ${
-                  !isAllDates && filterDate === getTodayDateStr()
-                    ? 'bg-[#b38059] text-white shadow-xs'
-                    : 'border border-neutral-300 text-neutral-700 hover:border-neutral-500 bg-white'
-                }`}
-              >
-                Aujourd'hui
-              </button>
-              <button
-                type="button"
-                onClick={setAllDatesPreset}
-                className={`rounded px-3.5 py-1.5 text-xs font-semibold transition ${
-                  isAllDates
-                    ? 'bg-[#b38059] text-white shadow-xs'
-                    : 'border border-neutral-300 text-neutral-700 hover:border-neutral-500 bg-white'
-                }`}
-              >
-                Toutes les dates
-              </button>
-            </div>
+              ? `Indicateurs financiers et ventes de ${activeShopLabel}, ${periodLabel}.`
+              : `Vue consolidée du réseau (Shop 1 & Shop 2) – Ventes, stock et palmarès, ${periodLabel}.`
           }
         />
       </div>
@@ -341,16 +227,35 @@ export default function Dashboard({
       {/* Filter Toolbar (No Gradient) */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3.5">
         <div className="flex flex-wrap items-center gap-4 text-xs">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-[#b38059]" />
-            <span className="font-semibold text-neutral-700">Date analysée :</span>
-            <input
-              type="date"
-              value={filterDate || ''}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 outline-none focus:border-[#b38059]"
-            />
-          </div>
+          <DateRangeFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartChange={setStartDate}
+            onEndChange={setEndDate}
+            onPreset={(preset) => {
+              const now = new Date();
+              if (preset === 'today') {
+                const today = getTodayDateStr(now);
+                setStartDate(today);
+                setEndDate(today);
+              } else if (preset === 'week') {
+                const monday = new Date(now);
+                const day = monday.getDay();
+                monday.setDate(monday.getDate() + (day === 0 ? -6 : 1 - day));
+                setStartDate(getTodayDateStr(monday));
+                setEndDate(getTodayDateStr(now));
+              } else if (preset === 'month') {
+                setStartDate(getTodayDateStr(new Date(now.getFullYear(), now.getMonth(), 1)));
+                setEndDate(getTodayDateStr(now));
+              }
+            }}
+            onReset={() => {
+              setStartDate('');
+              setEndDate('');
+            }}
+            labels={{ today: 'Aujourd’hui', week: 'Cette semaine', month: 'Ce mois-ci', reset: 'Toutes les dates' }}
+            className="w-full"
+          />
 
           {Array.isArray(users) && users.length > 0 && setFilterCashier && (
             <div className="flex items-center gap-2">
@@ -455,22 +360,22 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* KPI 2: Panier Moyen */}
+        {/* KPI 2: Factures réalisées */}
         <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-5 shadow-xs">
           <div className="flex items-center justify-between text-neutral-600">
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">
-              Panier Moyen
+              Factures réalisées
             </span>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
-              <ShoppingBag className="h-4 w-4" />
+              <Printer className="h-4 w-4" />
             </div>
           </div>
 
           <p className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900">
-            {formatFCFA(avgBasket)}
+            {totalTickets}
           </p>
           <p className="mt-2 text-xs text-indigo-700 font-medium">
-            Sur {totalTickets} ticket{totalTickets > 1 ? 's' : ''} client{totalTickets > 1 ? 's' : ''}
+            Factures validées sur la période
           </p>
         </div>
 
@@ -634,97 +539,6 @@ export default function Dashboard({
             size={180}
             strokeWidth={24}
             centerTitle="Total Réseau"
-          />
-        </div>
-      </div>
-
-      {/* Row: Main Timeline Histogram & Payment Methods Breakdown */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Timeline Histogram */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs lg:col-span-2">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 pb-3 mb-4">
-            <div>
-              <h3 className="text-sm font-bold text-neutral-900">
-                {isAllDates ? 'Évolution Globale des Ventes' : `Activité Horaire du ${filterDate}`}
-              </h3>
-              <p className="text-xs text-neutral-500">
-                {!shopType ? 'Volume de chiffre d’affaires consolidé' : `Ventes pour ${activeShopLabel}`}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-100 p-0.5">
-              <button
-                type="button"
-                onClick={() => setChartType('bar')}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition ${
-                  chartType === 'bar'
-                    ? 'bg-white text-neutral-900 shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-                title="Affichage Histogramme"
-              >
-                <BarChart3 className="h-3.5 w-3.5 text-[#b38059]" />
-                <span>Barres</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartType('line')}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition ${
-                  chartType === 'line'
-                    ? 'bg-white text-neutral-900 shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-                title="Affichage Courbe"
-              >
-                <LineChartIcon className="h-3.5 w-3.5 text-[#b38059]" />
-                <span>Courbe</span>
-              </button>
-            </div>
-          </div>
-
-          {chartType === 'bar' ? (
-            <BarChart
-              data={timeline}
-              height={240}
-              isDual={!shopType}
-              series1Key="shop1"
-              series2Key="shop2"
-              series1Label="Shop 1 (Homme)"
-              series2Label="Shop 2 (Femme)"
-              series1Color="#b38059"
-              series2Color="#2563eb"
-              valueKey="total"
-              labelKey="label"
-            />
-          ) : (
-            <LineChart
-              data={timeline}
-              height={240}
-              valueKey="total"
-              labelKey="label"
-              lineColor="#b38059"
-            />
-          )}
-        </div>
-
-        {/* Rush Hours */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-4">
-            <div>
-              <h3 className="text-sm font-bold text-neutral-900">Affluence & Heures de Pointe</h3>
-              <p className="text-xs text-neutral-500">Fréquentation horaire</p>
-            </div>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-              <Clock className="h-4 w-4" />
-            </div>
-          </div>
-
-          <BarChart
-            data={rushHoursData}
-            height={200}
-            valueKey="total"
-            labelKey="label"
-            series1Color="#d97706"
           />
         </div>
       </div>

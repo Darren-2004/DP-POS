@@ -259,7 +259,12 @@ export default function App() {
         )}
 
         {!currentUser ? (
-          <main className="flex min-h-0 flex-1 items-center justify-center p-4">
+          <main
+            className="flex min-h-0 flex-1 items-center justify-center bg-cover bg-center p-4"
+            style={{
+              backgroundImage: "linear-gradient(rgba(35, 24, 17, 0.48), rgba(35, 24, 17, 0.48)), url('/salon.jfif')",
+            }}
+          >
             <LoginView
               users={users}
               serverOnline={serverOnline}

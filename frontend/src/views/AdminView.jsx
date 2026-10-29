@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BarChart3,
   Users as UsersIcon,
@@ -62,6 +62,8 @@ export default function AdminView({
     totalPages: 0,
   });
   const [filterDate, setFilterDate] = useState(getTodayDateStr());
+  const [filterStartDate, setFilterStartDate] = useState(getTodayDateStr());
+  const [filterEndDate, setFilterEndDate] = useState(getTodayDateStr());
   const [filterCashier, setFilterCashier] = useState('');
   const [reservationPayments, setReservationPayments] = useState([]);
   const [reservations, setReservations] = useState([]);
@@ -69,7 +71,12 @@ export default function AdminView({
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const fetchIdRef = useRef(0);
 
-  const refreshDashboardData = async (date = filterDate, cashierId = filterCashier, page = invoicePage) => {
+  const refreshDashboardData = useCallback(async (
+    startDate = filterStartDate,
+    endDate = filterEndDate,
+    cashierId = filterCashier,
+    page = invoicePage
+  ) => {
     const fetchId = ++fetchIdRef.current;
     if (isManager && !['HOMME', 'FEMME'].includes(currentShopType)) {
       setStats({ today: {}, week: {}, month: {} });
@@ -82,7 +89,10 @@ export default function AdminView({
     setDashboardLoading(true);
     try {
       const params = new URLSearchParams();
-      if (date) params.append('date', date);
+      if (startDate && endDate) {
+        params.append('startDate', startDate);
+        params.append('endDate', endDate);
+      }
       if (cashierId) params.append('cashierId', cashierId);
       if (currentShopType) params.append('shopType', currentShopType);
 
@@ -140,7 +150,7 @@ export default function AdminView({
     } finally {
       if (fetchId === fetchIdRef.current) setDashboardLoading(false);
     }
-  };
+  }, [filterStartDate, filterEndDate, filterCashier, invoicePage, isManager, currentShopType]);
 
   const fetchInvoices = async (date = filterDate, cashierId = filterCashier, page = invoicePage) => {
     try {
@@ -169,8 +179,8 @@ export default function AdminView({
   };
 
   useEffect(() => {
-    refreshDashboardData(filterDate, filterCashier, invoicePage);
-  }, [filterDate, filterCashier, adminTab, currentShopType, invoicePage]);
+    refreshDashboardData();
+  }, [refreshDashboardData, adminTab]);
 
   // Sidebar navigation sections
   const navigationSections = isAdmin
@@ -340,11 +350,12 @@ export default function AdminView({
             reservationPayments={reservationPayments}
             reservations={reservations}
             users={isManager ? users.filter((u) => u.shopType === currentShopType && u.role === 'CASHIER') : users}
-            filterDate={filterDate}
-            setFilterDate={setFilterDate}
+            startDate={filterStartDate}
+            endDate={filterEndDate}
+            setStartDate={setFilterStartDate}
+            setEndDate={setFilterEndDate}
             filterCashier={filterCashier}
             setFilterCashier={setFilterCashier}
-            fetchInvoices={fetchInvoices}
             loading={dashboardLoading}
             shopType={currentShopType}
             onScopeChange={(scope) => {
@@ -405,7 +416,7 @@ export default function AdminView({
             setFilterCashier={setFilterCashier}
             selectedReservationId={selectedReservationId}
             setSelectedReservationId={setSelectedReservationId}
-            onRefresh={() => refreshDashboardData(filterDate, filterCashier, invoicePage)}
+            onRefresh={() => refreshDashboardData(filterStartDate, filterEndDate, filterCashier, invoicePage)}
             shopType={currentShopType}
           />
         )}

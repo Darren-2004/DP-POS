@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from './DesignSystem';
 export default function CashierStatsView({ currentUser }) {
   const [period, setPeriod] = useState('today');
   const [customDate, setCustomDate] = useState(getTodayDateStr());
+  const [customEndDate, setCustomEndDate] = useState(getTodayDateStr());
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -22,7 +23,7 @@ export default function CashierStatsView({ currentUser }) {
       fetchStats();
       fetchDetails();
     }
-  }, [currentUser?.id, period, customDate, onlyMyOps]);
+  }, [currentUser?.id, period, customDate, customEndDate, onlyMyOps]);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -31,7 +32,7 @@ export default function CashierStatsView({ currentUser }) {
     };
     window.addEventListener('pos:dashboard-refresh', handleRefresh);
     return () => window.removeEventListener('pos:dashboard-refresh', handleRefresh);
-  }, [currentUser?.id, period, customDate, onlyMyOps]);
+  }, [currentUser?.id, period, customDate, customEndDate, onlyMyOps]);
 
   const getDateParams = () => {
     const now = new Date();
@@ -42,7 +43,7 @@ export default function CashierStatsView({ currentUser }) {
       endDateStr = todayStr;
     } else if (period === 'custom') {
       startDateStr = customDate || getTodayDateStr();
-      endDateStr = customDate || getTodayDateStr();
+      endDateStr = customEndDate || getTodayDateStr();
     } else if (period === 'week') {
       const d = new Date(now);
       const day = d.getDay();
@@ -187,17 +188,31 @@ export default function CashierStatsView({ currentUser }) {
               onClick={() => setPeriod('custom')}
               className={cx('px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer', period === 'custom' ? 'bg-[#b38059] text-white shadow-xs' : 'text-neutral-600 hover:text-neutral-900')}
             >
-              Autre date
+              Période
             </button>
           </div>
 
           {period === 'custom' && (
-            <input
-              type="date"
-              value={customDate}
-              onChange={(e) => setCustomDate(e.target.value)}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs text-neutral-900 font-medium outline-none focus:border-[#b38059]"
-            />
+            <div className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
+              <label htmlFor="cashier-stats-start-date">Du</label>
+              <input
+                id="cashier-stats-start-date"
+                type="date"
+                value={customDate}
+                max={customEndDate || undefined}
+                onChange={(e) => setCustomDate(e.target.value)}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs text-neutral-900 font-medium outline-none focus:border-[#b38059]"
+              />
+              <label htmlFor="cashier-stats-end-date">Au</label>
+              <input
+                id="cashier-stats-end-date"
+                type="date"
+                value={customEndDate}
+                min={customDate || undefined}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs text-neutral-900 font-medium outline-none focus:border-[#b38059]"
+              />
+            </div>
           )}
 
           {(currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER') && (
