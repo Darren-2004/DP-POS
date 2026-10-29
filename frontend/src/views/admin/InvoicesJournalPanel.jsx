@@ -215,7 +215,7 @@ export default function InvoicesJournalPanel({
                           isHomme ? 'bg-amber-100 text-amber-800' : 'bg-neutral-100 text-neutral-800'
                         }`}
                       >
-                        {isHomme ? 'Shop 1 (Homme)' : 'Shop 2 (Femme)'}
+                        {isHomme ? 'Shop 1' : 'Shop 2'}
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-neutral-600 font-mono text-[11px]">

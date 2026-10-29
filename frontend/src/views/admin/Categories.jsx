@@ -410,8 +410,8 @@ export default function Categories({ categories = [], fetchCategories, loading =
                   className={underlineInputCls}
                 >
                   <option value="ALL">Tous les shops (Mixte)</option>
-                  <option value="FEMME">Shop Femme</option>
-                  <option value="HOMME">Shop Homme</option>
+                  <option value="FEMME">Shop 2</option>
+                  <option value="HOMME">Shop 1</option>
                 </select>
               </Field>
             )}

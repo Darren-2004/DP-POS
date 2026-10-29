@@ -36,7 +36,7 @@ export default function Header({
           </div>
           <div>
             <h1 className="text-xs font-extrabold tracking-wide text-white leading-tight">
-              JOEL SHOP – SALON DE BEAUTÉ
+              Dimitri Perfect – Salon de Beauté
             </h1>
             <p className="text-[10px] text-white/80 font-medium">
               {currentView === 'admin' ? 'Direction & Administration' : 'Point d’Encaissement Caisse'}

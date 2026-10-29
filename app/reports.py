@@ -410,13 +410,13 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
 
     shop_comparison = {
         "shop1": {
-            "name": "Shop 1 (Homme)",
+            "name": "Shop 1",
             "total": round(shop1_total, 2),
             "count": shop1_count,
             "averageBasket": round(shop1_total / shop1_count, 2) if shop1_count else 0
         },
         "shop2": {
-            "name": "Shop 2 (Femme)",
+            "name": "Shop 2",
             "total": round(shop2_total, 2),
             "count": shop2_count,
             "averageBasket": round(shop2_total / shop2_count, 2) if shop2_count else 0

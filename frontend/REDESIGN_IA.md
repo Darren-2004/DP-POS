@@ -1,4 +1,4 @@
-# JOEL SHOP POS Information Architecture
+# Dimitri Perfect POS Information Architecture
 
 ## Product Shells
 

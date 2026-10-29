@@ -89,11 +89,11 @@ export default function SettingsPanel({ currentUser }) {
         <div className="grid gap-4 sm:grid-cols-3 text-xs">
           <div className="rounded border border-neutral-100 bg-neutral-50 p-3">
             <span className="text-neutral-400 font-medium">Nom commercial</span>
-            <p className="mt-1 font-bold text-neutral-900 text-sm">JOEL SHOP</p>
+            <p className="mt-1 font-bold text-neutral-900 text-sm">Dimitri Perfect</p>
           </div>
           <div className="rounded border border-neutral-100 bg-neutral-50 p-3">
             <span className="text-neutral-400 font-medium">Points de vente</span>
-            <p className="mt-1 font-bold text-neutral-900 text-sm">Shop 1 (Homme) & Shop 2 (Femme)</p>
+            <p className="mt-1 font-bold text-neutral-900 text-sm">Shop 1 & Shop 2</p>
           </div>
           <div className="rounded border border-neutral-100 bg-neutral-50 p-3">
             <span className="text-neutral-400 font-medium">Devise monétaire</span>

@@ -41,7 +41,7 @@ export default function Dashboard({
   const isAllDates = !startDate || !endDate;
   const periodLabel = isAllDates ? 'toutes les dates' : startDate === endDate ? `du ${startDate}` : `du ${startDate} au ${endDate}`;
   const activeShopLabel =
-    shopType === 'HOMME' ? 'Shop 1 (Homme)' : shopType === 'FEMME' ? 'Shop 2 (Femme)' : 'Tous les shops (Réseau)';
+    shopType === 'HOMME' ? 'Shop 1' : shopType === 'FEMME' ? 'Shop 2' : 'Tous les shops (Réseau)';
 
   const analytics = stats?.analytics || {};
   const growthPercentage = stats?.growthPercentage;
@@ -77,8 +77,8 @@ export default function Dashboard({
 
   // Pie chart showing total revenue divided by each shop
   const shopPieData = [
-    { label: 'Shop 1 (Homme)', value: shop1Revenue, color: '#b38059' },
-    { label: 'Shop 2 (Femme)', value: shop2Revenue, color: '#2563eb' },
+    { label: 'Shop 1', value: shop1Revenue, color: '#b38059' },
+    { label: 'Shop 2', value: shop2Revenue, color: '#2563eb' },
   ].filter((d) => d.value > 0);
 
   // Fallback if no revenue yet
@@ -86,8 +86,8 @@ export default function Dashboard({
     shopPieData.length > 0
       ? shopPieData
       : [
-          { label: 'Shop 1 (Homme)', value: 0, color: '#b38059' },
-          { label: 'Shop 2 (Femme)', value: 0, color: '#2563eb' },
+          { label: 'Shop 1', value: 0, color: '#b38059' },
+          { label: 'Shop 2', value: 0, color: '#2563eb' },
         ];
 
   // Dual Line Chart Comparative Data (Months vs Days of Current Week)
@@ -299,7 +299,7 @@ export default function Dashboard({
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
-              Shop 1 (Homme)
+              Shop 1
             </button>
             <button
               type="button"
@@ -310,7 +310,7 @@ export default function Dashboard({
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
-              Shop 2 (Femme)
+              Shop 2
             </button>
           </div>
         )}
@@ -480,10 +480,10 @@ export default function Dashboard({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 pb-3 mb-4">
             <div>
               <h3 className="text-sm font-bold text-neutral-900">
-                Courbe Comparative : Shop 1 (Homme) vs Shop 2 (Femme)
+                Courbe Comparative : Shop 1 vs Shop 2
               </h3>
               <p className="text-xs text-neutral-500">
-                Ligne Shop 1 en bronze et Ligne Shop 2 en bleu
+                Shop 1 en bronze et Shop 2 en bleu
               </p>
             </div>
 
@@ -519,8 +519,8 @@ export default function Dashboard({
             height={260}
             series1Key="shop1"
             series2Key="shop2"
-            series1Label="Shop 1 (Homme)"
-            series2Label="Shop 2 (Femme)"
+            series1Label="Shop 1"
+            series2Label="Shop 2"
             series1Color="#b38059"
             series2Color="#2563eb"
             labelKey="label"
@@ -531,7 +531,7 @@ export default function Dashboard({
         <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
           <div className="border-b border-neutral-100 pb-3 mb-4">
             <h3 className="text-sm font-bold text-neutral-900">Répartition du CA par Shop</h3>
-            <p className="text-xs text-neutral-500">Part de Shop 1 (Homme) vs Shop 2 (Femme)</p>
+            <p className="text-xs text-neutral-500">Part de Shop 1 vs Shop 2</p>
           </div>
 
           <DonutChart

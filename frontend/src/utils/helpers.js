@@ -345,7 +345,7 @@ export const triggerPrint = (invoiceData) => {
 
   const printHTML = isZ ? `
     <div style="text-align:center;margin-bottom:8px;">
-      <h2 style="margin:0;font-size:16pt;letter-spacing:2px;">JOEL SHOP</h2>
+      <h2 style="margin:0;font-size:16pt;letter-spacing:2px;">DIMITRI PERFECT</h2>
       <h3 style="margin:2px 0;font-size:11pt;">RAPPORT DE CLÔTURE (Z)</h3>
       <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
     </div>
@@ -372,7 +372,7 @@ export const triggerPrint = (invoiceData) => {
     </div>
   ` : `
     <div style="text-align:center;margin-bottom:2px;">
-      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">JOEL SHOP</h2>
+      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">DIMITRI PERFECT</h2>
       <p style="margin:2px 0;font-size:9pt;letter-spacing:1px;font-weight:bold;">${isDelivery ? '─── BON DE LIVRAISON ───' : (isReservation ? '─── FACTURE DE RÉSERVATION ───' : '─── TICKET DE CAISSE ───')}</p>
       <p style="margin:2px 0;font-size:8.5pt;font-weight:bold;">NIU: P079216781512Z</p>
     </div>
@@ -512,7 +512,7 @@ export const triggerProformaPrint = (reservation) => {
 
   const printHTML = `
     <div style="text-align:center;margin-bottom:2px;">
-      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">JOEL SHOP</h2>
+      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">DIMITRI PERFECT</h2>
       <p style="margin:2px 0;font-size:9pt;letter-spacing:1px;font-weight:bold;">─── REÇU PROFORMA (RÉSERVATION) ───</p>
       <p style="margin:2px 0;font-size:8.5pt;font-weight:bold;">NIU: P079216781512Z</p>
     </div>
@@ -575,7 +575,7 @@ export const triggerProformaPrint = (reservation) => {
     <p style="text-align:center;margin-top:6px;font-size:8.5pt;font-weight:bold;">
       Document Proforma de Réservation.<br>
       La facture définitive est remise après solde complet.<br>
-      Merci pour votre confiance - JOEL SHOP
+      Merci pour votre confiance - DIMITRI PERFECT
     </p>
     <div style="text-align:center;margin-top:8px;font-size:7.5pt;color:#000;font-weight:bold;">Fait par © TriSpark Digital1</div>
   `;
@@ -679,7 +679,7 @@ export const triggerFinalReservationPrint = (invoiceData) => {
 
   const printHTML = `
     <div style="text-align:center;margin-bottom:2px;">
-      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">JOEL SHOP</h2>
+      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">DIMITRI PERFECT</h2>
       <p style="margin:2px 0;font-size:9pt;letter-spacing:1px;font-weight:bold;">─── FACTURE DÉFINITIVE ───</p>
       <p style="margin:2px 0;font-size:8.5pt;font-weight:bold;">NIU: P079216781512Z</p>
     </div>

@@ -62,6 +62,7 @@ export default function AdminView({
     totalPages: 0,
   });
   const [filterDate, setFilterDate] = useState(getTodayDateStr());
+  const [reservationFilterDate, setReservationFilterDate] = useState('');
   const [filterStartDate, setFilterStartDate] = useState(getTodayDateStr());
   const [filterEndDate, setFilterEndDate] = useState(getTodayDateStr());
   const [filterCashier, setFilterCashier] = useState('');
@@ -95,6 +96,10 @@ export default function AdminView({
       }
       if (cashierId) params.append('cashierId', cashierId);
       if (currentShopType) params.append('shopType', currentShopType);
+      const reservationParams = new URLSearchParams();
+      if (reservationFilterDate) reservationParams.append('date', reservationFilterDate);
+      if (cashierId) reservationParams.append('cashierId', cashierId);
+      if (currentShopType) reservationParams.append('shopType', currentShopType);
 
       const [statsRes, invsRes, resPayRes, resRes] = await Promise.all([
         fetch(`${API_BASE}/stats?${params.toString()}`),
@@ -106,7 +111,7 @@ export default function AdminView({
           }).toString()}`
         ),
         fetch(`${API_BASE}/reservation-payments?${params.toString()}`),
-        fetch(`${API_BASE}/reservations?${params.toString()}`),
+        fetch(`${API_BASE}/reservations?${reservationParams.toString()}`),
       ]);
 
       if (fetchId !== fetchIdRef.current) return;
@@ -150,7 +155,7 @@ export default function AdminView({
     } finally {
       if (fetchId === fetchIdRef.current) setDashboardLoading(false);
     }
-  }, [filterStartDate, filterEndDate, filterCashier, invoicePage, isManager, currentShopType]);
+  }, [filterStartDate, filterEndDate, filterCashier, reservationFilterDate, invoicePage, isManager, currentShopType]);
 
   const fetchInvoices = async (date = filterDate, cashierId = filterCashier, page = invoicePage) => {
     try {
@@ -189,8 +194,8 @@ export default function AdminView({
           title: 'PILOTAGE DU RÉSEAU',
           items: [
             { id: 'global', label: 'Vue Réseau Consolidée', icon: <TrendingUp className="h-4 w-4" /> },
-            { id: 'shop1', label: 'Shop 1 (Homme)', icon: <Store className="h-4 w-4" /> },
-            { id: 'shop2', label: 'Shop 2 (Femme)', icon: <Store className="h-4 w-4" /> },
+            { id: 'shop1', label: 'Shop 1', icon: <Store className="h-4 w-4" /> },
+            { id: 'shop2', label: 'Shop 2', icon: <Store className="h-4 w-4" /> },
           ],
         },
         {
@@ -272,7 +277,7 @@ export default function AdminView({
                 <Store className="h-4 w-4" />
               </div>
               <div>
-                <h2 className="text-xs font-extrabold text-neutral-900 tracking-wide">JOEL SHOP</h2>
+                <h2 className="text-xs font-extrabold text-neutral-900 tracking-wide">Dimitri Perfect</h2>
                 <p className="text-[10px] text-[#b38059] font-bold uppercase tracking-wider">
                   {isAdmin ? 'Console Direction' : 'Gestion Salon'}
                 </p>
@@ -329,13 +334,13 @@ export default function AdminView({
         <div className="mt-6 pt-3 border-t border-[#e8e2d8] text-xs">
           <div className="rounded-xl bg-white border border-[#e8e2d8] p-3 shadow-2xs">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-neutral-900 text-xs">Réseau Joel Shop</span>
+              <span className="font-bold text-neutral-900 text-xs">Réseau Dimitri Perfect</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 En ligne
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-neutral-500 font-medium">Shop 1 (Homme) & Shop 2 (Femme)</p>
+            <p className="mt-1 text-[11px] text-neutral-500 font-medium">Shop 1 & Shop 2</p>
           </div>
         </div>
       </aside>
@@ -358,11 +363,11 @@ export default function AdminView({
             setFilterCashier={setFilterCashier}
             loading={dashboardLoading}
             shopType={currentShopType}
-            onScopeChange={(scope) => {
+            onScopeChange={isAdmin ? (scope) => {
               if (scope === 'global') setAdminTab('global');
               else if (scope === 'shop1') setAdminTab('shop1');
               else if (scope === 'shop2') setAdminTab('shop2');
-            }}
+            } : undefined}
           />
         )}
 
@@ -410,8 +415,8 @@ export default function AdminView({
             reservations={reservations}
             loading={dashboardLoading}
             users={users}
-            filterDate={filterDate}
-            setFilterDate={setFilterDate}
+            filterDate={reservationFilterDate}
+            setFilterDate={setReservationFilterDate}
             filterCashier={filterCashier}
             setFilterCashier={setFilterCashier}
             selectedReservationId={selectedReservationId}
