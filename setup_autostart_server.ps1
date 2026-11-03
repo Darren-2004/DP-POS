@@ -3,9 +3,12 @@ $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ecosystemPath = Join-Path $projectRoot 'ecosystem.config.cjs'
 $startedWithPm2 = $false
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+$pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+if (-not $pythonCmd) { $pythonCmd = Get-Command py.exe -ErrorAction SilentlyContinue }
+if (-not $pythonCmd) {
     throw 'Python was not found on PATH. Install Python and the packages in requirements.txt first.'
 }
+$env:POS_PYTHON_PATH = $pythonCmd.Source
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
     throw 'npm was not found on PATH. Install Node.js first.'
 }

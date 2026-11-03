@@ -87,11 +87,13 @@ function Clear-PosPorts {
 
 try {
     # Locate Python: accept python.exe or py.exe (Windows Launcher)
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $pythonCmd) { $pythonCmd = Get-Command py -ErrorAction SilentlyContinue }
+    $pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+    if (-not $pythonCmd) { $pythonCmd = Get-Command py.exe -ErrorAction SilentlyContinue }
     if (-not $pythonCmd) {
         throw 'Python was not found. Install Python and the packages in requirements.txt first.'
     }
+    # Export real executable path for PM2 ecosystem
+    $env:POS_PYTHON_PATH = $pythonCmd.Source
     if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
         throw 'Node.js/npm was not found. Install Node.js first.'
     }
