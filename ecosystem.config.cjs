@@ -7,7 +7,7 @@ module.exports = {
     {
       name: 'pos-python-backend',
       script: 'server.py',
-      interpreter: 'python',
+      interpreter: 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\python.exe',
       cwd: root,
       env: {
         HOST: '0.0.0.0',

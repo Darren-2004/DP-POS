@@ -80,7 +80,7 @@ export const getBeautyReceiptStyles = () => `
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     font-size: 8.5pt;
     line-height: 1.25;
-    color: #1a120c;
+    color:#000;
     background: #fff;
     word-break: break-word;
     overflow-wrap: break-word;
@@ -91,11 +91,10 @@ export const getBeautyReceiptStyles = () => `
 
 export const renderBeautyHeader = (title, subtitle = 'SALON DE BEAUTÉ & SOINS') => `
   <div style="text-align:center;margin-bottom:6px;">
-    <div style="font-size:7.5pt;letter-spacing:3px;color:#b38059;font-weight:700;margin-bottom:1px;">✦ &nbsp; • &nbsp; ✧ &nbsp; • &nbsp; ✦</div>
-    <h1 style="margin:0;font-size:14pt;font-weight:900;letter-spacing:2px;color:#1a120c;text-transform:uppercase;line-height:1.15;">DIMITRI PERFECT</h1>
-    <div style="font-size:7.5pt;font-weight:700;letter-spacing:1.5px;color:#7c6858;text-transform:uppercase;margin:2px 0 1px 0;">${subtitle}</div>
-    <div style="font-size:7pt;color:#8a786a;font-weight:500;">NIU : P079216781512Z</div>
-    <div style="margin:5px auto 3px auto;display:inline-block;padding:2px 10px;border:1.2px solid #2c1e14;border-radius:12px;font-size:7.5pt;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;background:#faf7f4;color:#1a120c;">
+    <div style="font-size:7.5pt;letter-spacing:3px;color:#000;font-weight:700;margin-bottom:1px;">✦ &nbsp; • &nbsp; ✧ &nbsp; • &nbsp; ✦</div>
+    <h1 style="margin:0;font-size:14pt;font-weight:900;letter-spacing:2px;color:#000;text-transform:uppercase;line-height:1.15;">DIMITRI PERFECT</h1>
+    <div style="font-size:7.5pt;font-weight:700;letter-spacing:1.5px;color:#000;text-transform:uppercase;margin:2px 0 1px 0;">${subtitle}</div>
+    <div style="margin:5px auto 3px auto;display:inline-block;padding:2px 10px;border:1.2px solid #2c1e14;border-radius:12px;font-size:7.5pt;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;background:#faf7f4;color:#000;">
       ${title}
     </div>
   </div>
@@ -118,10 +117,10 @@ export const renderBeautyItemsList = (items = []) => {
       </div>
       ${grouped.map(item => `
         <div style="border-bottom:1px dashed #e2dbd4;padding:4px 0;page-break-inside:avoid;">
-          <div style="font-size:8.5pt;font-weight:600;color:#1a120c;line-height:1.25;word-break:break-word;overflow-wrap:break-word;">
+          <div style="font-size:8.5pt;font-weight:600;color:#000;line-height:1.25;word-break:break-word;overflow-wrap:break-word;">
             ${item.categoryName}
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;font-size:8pt;color:#666;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;font-size:8pt;color:#000;">
             <span style="letter-spacing:0.2px;">
               ${item.qty} × ${Math.round(item.price).toLocaleString('fr-FR')} FCFA
             </span>
@@ -136,12 +135,12 @@ export const renderBeautyItemsList = (items = []) => {
 };
 
 export const renderBeautyFooter = (extraNote = '') => `
-  <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #d5cdc5;page-break-inside:avoid;">
-    ${extraNote ? `<div style="font-size:7.5pt;font-weight:600;color:#5a4232;margin-bottom:4px;line-height:1.3;">${extraNote}</div>` : ''}
-    <div style="font-size:8pt;font-weight:700;color:#1a120c;margin-bottom:2px;">✦ Merci de votre visite &amp; à très bientôt ! ✦</div>
-    <div style="font-size:7.5pt;color:#7c6858;font-style:italic;margin-bottom:3px;">Révélez votre beauté chez Dimitri Perfect ✨</div>
-    <div style="font-size:6.8pt;color:#8a786a;margin-bottom:4px;line-height:1.25;">Les prestations et articles vendus ne sont ni remboursables ni échangeables.</div>
-    <div style="font-size:6.5pt;color:#999;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Dimitri Perfect POS • Par TriSpark Digital</div>
+  <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1.5px solid #000;page-break-inside:avoid;color:#000;">
+    ${extraNote ? `<div style="font-size:7.5pt;font-weight:700;color:#000;margin-bottom:4px;line-height:1.3;">${extraNote}</div>` : ''}
+    <div style="font-size:8pt;font-weight:700;color:#000;margin-bottom:2px;">✦ Merci de votre visite &amp; à très bientôt ! ✦</div>
+    <div style="font-size:7.5pt;color:#000;font-weight:600;margin-bottom:3px;">Révélez votre beauté chez Dimitri Perfect</div>
+    <div style="font-size:7pt;color:#000;font-weight:600;margin-bottom:4px;line-height:1.25;">Les prestations et articles vendus ne sont ni remboursables ni échangeables.</div>
+    <div style="font-size:6.8pt;color:#000;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Fait Par TriSpark Digital</div>
   </div>
 `;
 
@@ -158,13 +157,13 @@ export const renderPaymentMethodHTML = (method) => {
       else if (k === 'ONLINE') label = 'Mobile Money';
       else if (k === 'ORANGE_MONEY') label = 'Orange Money';
       else label = k;
-      return `<div style="display:flex;justify-content:space-between;padding:1px 0;font-size:8pt;color:#333;">
+      return `<div style="display:flex;justify-content:space-between;padding:1px 0;font-size:8pt;color:#000;">
         <span>• ${label} :</span>
         <span style="font-weight:700;color:#000;">${new Intl.NumberFormat('fr-FR').format(v)} FCFA</span>
       </div>`;
     });
     return `<div style="margin:4px 0;padding:4px 0;border-top:1px dashed #d5cdc5;border-bottom:1px dashed #d5cdc5;">
-      <div style="font-size:7.5pt;font-weight:800;letter-spacing:0.5px;color:#5a4232;margin-bottom:2px;text-transform:uppercase;">Règlement Mixte :</div>
+      <div style="font-size:7.5pt;font-weight:800;letter-spacing:0.5px;color:#000;margin-bottom:2px;text-transform:uppercase;">Règlement Mixte :</div>
       ${lines.join('')}
     </div>`;
   }
@@ -175,8 +174,8 @@ export const renderPaymentMethodHTML = (method) => {
   else if (methodStr === 'ONLINE') label = 'Mobile Money';
   else if (methodStr === 'ORANGE_MONEY') label = 'Orange Money';
   return `<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 0;font-size:8pt;">
-    <span style="color:#666;">Règlement :</span>
-    <span style="font-weight:700;color:#1a120c;background:#f3ece4;padding:1px 6px;border-radius:4px;">${label}</span>
+    <span style="color:#000;">Règlement :</span>
+    <span style="font-weight:700;color:#000;background:#f3ece4;padding:1px 6px;border-radius:4px;">${label}</span>
   </div>`;
 };
 
@@ -387,40 +386,40 @@ export const triggerPrint = (invoiceData) => {
     ${renderBeautyHeader('RAPPORT DE CLÔTURE (Z)', 'SYNTHÈSE DE CAISSE')}
     <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
       <div style="display:flex;justify-content:space-between;margin:2px 0;">
-        <span style="color:#666;">Date &amp; Heure :</span>
-        <span style="font-weight:600;color:#1a120c;">${invoiceData.zReport.date} ${invoiceData.zReport.time}</span>
+        <span style="color:#000;">Date &amp; Heure :</span>
+        <span style="font-weight:600;color:#000;">${invoiceData.zReport.date} ${invoiceData.zReport.time}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin:2px 0;">
-        <span style="color:#666;">Opérateur :</span>
-        <span style="font-weight:600;color:#1a120c;">${invoiceData.zReport.cashierName || invoiceData.createdBy?.name || 'Admin'}</span>
+        <span style="color:#000;">Opérateur :</span>
+        <span style="font-weight:600;color:#000;">${invoiceData.zReport.cashierName || invoiceData.createdBy?.name || 'Admin'}</span>
       </div>
     </div>
 
     <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin:6px 0;background:#fff;">
-      <div style="font-size:7.5pt;font-weight:800;letter-spacing:1px;color:#7c6858;text-transform:uppercase;margin-bottom:4px;">SYNTHÈSE COMPTABLE</div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11pt;font-weight:800;color:#1a120c;margin:4px 0;">
+      <div style="font-size:7.5pt;font-weight:800;letter-spacing:1px;color:#000;text-transform:uppercase;margin-bottom:4px;">SYNTHÈSE COMPTABLE</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11pt;font-weight:800;color:#000;margin:4px 0;">
         <span>TOTAL NET :</span>
         <span style="font-size:12pt;">${Math.round(invoiceData.zReport.totalSales).toLocaleString('fr-FR')} FCFA</span>
       </div>
       <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
         <span>Espèces :</span>
         <span style="font-weight:700;">${Math.round(invoiceData.zReport.totalCash || invoiceData.zReport.payments?.CASH || 0).toLocaleString('fr-FR')} FCFA</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
         <span>Mobile Money :</span>
         <span style="font-weight:700;">${Math.round(invoiceData.zReport.totalOnline || invoiceData.zReport.payments?.ONLINE || 0).toLocaleString('fr-FR')} FCFA</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
         <span>Orange Money :</span>
         <span style="font-weight:700;">${Math.round(invoiceData.zReport.payments?.ORANGE_MONEY || 0).toLocaleString('fr-FR')} FCFA</span>
       </div>
       <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
         <span>Ventes Validées :</span>
         <span style="font-weight:700;">${invoiceData.zReport.validatedCount}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
         <span>Ventes Annulées :</span>
         <span style="font-weight:700;color:#c93b3b;">${invoiceData.zReport.cancelledCount}</span>
       </div>
@@ -433,55 +432,55 @@ export const triggerPrint = (invoiceData) => {
         </div>
         ${invoiceData.zReport.topSelling.map(cat => `
           <div style="display:flex;justify-content:space-between;font-size:8pt;border-bottom:1px dashed #e2dbd4;padding:3px 0;">
-            <span style="color:#1a120c;">${cat.name} (x${cat.quantity})</span>
+            <span style="color:#000;">${cat.name} (x${cat.quantity})</span>
             <span style="font-weight:700;color:#000;">${Math.round(cat.revenue).toLocaleString('fr-FR')} FCFA</span>
           </div>
         `).join('')}
       </div>
     ` : ''}
 
-    <div style="text-align:center;margin-top:10px;font-size:7.5pt;font-weight:800;color:#7c6858;letter-spacing:1px;border-top:1px dashed #d5cdc5;padding-top:6px;">
+    <div style="text-align:center;margin-top:10px;font-size:7.5pt;font-weight:800;color:#000;letter-spacing:1px;border-top:1px dashed #d5cdc5;padding-top:6px;">
       --- FIN DU RAPPORT DE CLÔTURE Z ---
     </div>
   ` : `
     ${renderBeautyHeader(isDelivery ? 'BON DE LIVRAISON' : (isReservation ? 'FACTURE DE RÉSERVATION' : 'TICKET DE CAISSE'))}
     <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">N° ${isDelivery ? 'Livraison' : (isReservation ? 'Facture' : 'Ticket')} :</span>
-        <span style="font-weight:800;color:#1a120c;font-family:monospace;">${isDelivery && invoiceData.deliveryNo ? invoiceData.deliveryNo : invoiceData.invoiceNumber}</span>
+        <span style="color:#000;">N° ${isDelivery ? 'Livraison' : (isReservation ? 'Facture' : 'Ticket')} :</span>
+        <span style="font-weight:800;color:#000;font-family:monospace;">${isDelivery && invoiceData.deliveryNo ? invoiceData.deliveryNo : invoiceData.invoiceNumber}</span>
       </div>
       ${isDelivery ? `
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Statut :</span>
-        <span style="font-weight:700;color:#1a120c;border:1px solid #1a120c;padding:0 4px;border-radius:3px;font-size:7.5pt;">${deliveryStatusLabel}</span>
+        <span style="color:#000;">Statut :</span>
+        <span style="font-weight:700;color:#000;border:1px solid #1a120c;padding:0 4px;border-radius:3px;font-size:7.5pt;">${deliveryStatusLabel}</span>
       </div>` : ''}
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Date :</span>
-        <span style="color:#1a120c;font-weight:600;">${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span>
+        <span style="color:#000;">Date :</span>
+        <span style="color:#000;font-weight:600;">${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Caissière :</span>
-        <span style="color:#1a120c;font-weight:600;">${invoiceData.createdBy?.name || 'Caissière'}</span>
+        <span style="color:#000;">Caissière :</span>
+        <span style="color:#000;font-weight:600;">${invoiceData.createdBy?.name || 'Caissière'}</span>
       </div>
       ${hasName ? `
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Client :</span>
-        <span style="font-weight:700;color:#1a120c;text-align:right;">${clientNameStr}</span>
+        <span style="color:#000;">Client :</span>
+        <span style="font-weight:700;color:#000;text-align:right;">${clientNameStr}</span>
       </div>` : ''}
       ${hasPhone ? `
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Téléphone :</span>
-        <span style="font-weight:700;color:#1a120c;text-align:right;">${clientPhoneStr}</span>
+        <span style="color:#000;">Téléphone :</span>
+        <span style="font-weight:700;color:#000;text-align:right;">${clientPhoneStr}</span>
       </div>` : ''}
       ${isDelivery && invoiceData.deliveryAddress ? `
       <div style="margin-top:3px;padding-top:3px;border-top:1px dashed #d5cdc5;">
-        <span style="color:#666;font-size:7.5pt;">Adresse livraison :</span>
-        <div style="font-weight:700;color:#1a120c;">${invoiceData.deliveryAddress}</div>
+        <span style="color:#000;font-size:7.5pt;">Adresse livraison :</span>
+        <div style="font-weight:700;color:#000;">${invoiceData.deliveryAddress}</div>
       </div>` : ''}
       ${isDelivery && invoiceData.deliveryPerson ? `
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Livreur :</span>
-        <span style="font-weight:700;color:#1a120c;">${invoiceData.deliveryPerson}</span>
+        <span style="color:#000;">Livreur :</span>
+        <span style="font-weight:700;color:#000;">${invoiceData.deliveryPerson}</span>
       </div>` : ''}
       ${renderPaymentMethodHTML(invoiceData.paymentMethod)}
     </div>
@@ -490,21 +489,21 @@ export const triggerPrint = (invoiceData) => {
 
     <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin-top:6px;background:#fff;">
       ${(isDelivery && Number(invoiceData.deliveryFee || 0) > 0) ? `
-        <div style="display:flex;justify-content:space-between;font-size:8.5pt;margin-bottom:2px;color:#666;">
+        <div style="display:flex;justify-content:space-between;font-size:8.5pt;margin-bottom:2px;color:#000;">
           <span>Sous-total prestations/articles :</span>
           <span>${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:8.5pt;margin-bottom:3px;color:#666;">
+        <div style="display:flex;justify-content:space-between;font-size:8.5pt;margin-bottom:3px;color:#000;">
           <span>Frais de livraison :</span>
           <span>${Math.round(invoiceData.deliveryFee).toLocaleString('fr-FR')} FCFA</span>
         </div>
         <div style="border-top:1px dashed #d5cdc5;margin:3px 0;"></div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10.5pt;font-weight:800;color:#1a120c;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10.5pt;font-weight:800;color:#000;">
           <span>TOTAL À PAYER :</span>
           <span style="font-size:12pt;">${Math.round(Number(invoiceData.totalAmount) + Number(invoiceData.deliveryFee)).toLocaleString('fr-FR')} FCFA</span>
         </div>
       ` : `
-        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10.5pt;font-weight:800;color:#1a120c;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10.5pt;font-weight:800;color:#000;">
           <span>TOTAL À PAYER :</span>
           <span style="font-size:12pt;">${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
         </div>
@@ -544,7 +543,7 @@ export const triggerProformaPrint = (reservation) => {
   const paymentsList = payments.map((p, idx) => {
     const isLast = idx === payments.length - 1;
     return `
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:8pt;${isLast ? 'font-weight:700;color:#1a120c;' : 'color:#555;'}">
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:8pt;${isLast ? 'font-weight:700;color:#000;' : 'color:#000;'}">
         <span>Tranche ${p.installmentNumber || idx + 1}/3 (${getPaymentMethodLabel(p.paymentMethod)})${isLast ? ' [Ce jour]' : ''} :</span>
         <span style="font-weight:700;">${Math.round(p.amount).toLocaleString('fr-FR')} FCFA</span>
       </div>
@@ -558,56 +557,56 @@ export const triggerProformaPrint = (reservation) => {
     ${renderBeautyHeader('REÇU PROFORMA (RÉSERVATION)')}
     <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">N° Réservation :</span>
-        <span style="font-weight:800;color:#1a120c;font-family:monospace;">${reservation.reservationNo}</span>
+        <span style="color:#000;">N° Réservation :</span>
+        <span style="font-weight:800;color:#000;font-family:monospace;">${reservation.reservationNo}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Date :</span>
-        <span style="color:#1a120c;font-weight:600;">${new Date(reservation.createdAt).toLocaleString('fr-FR')}</span>
+        <span style="color:#000;">Date :</span>
+        <span style="color:#000;font-weight:600;">${new Date(reservation.createdAt).toLocaleString('fr-FR')}</span>
       </div>
       ${reservation.clientName ? `
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Client :</span>
-        <span style="font-weight:700;color:#1a120c;text-align:right;">${reservation.clientName}</span>
+        <span style="color:#000;">Client :</span>
+        <span style="font-weight:700;color:#000;text-align:right;">${reservation.clientName}</span>
       </div>` : ''}
       ${reservation.clientPhone ? `
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Téléphone :</span>
-        <span style="font-weight:700;color:#1a120c;text-align:right;">${reservation.clientPhone}</span>
+        <span style="color:#000;">Téléphone :</span>
+        <span style="font-weight:700;color:#000;text-align:right;">${reservation.clientPhone}</span>
       </div>` : ''}
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Enregistré par :</span>
-        <span style="color:#1a120c;font-weight:600;">${reservation.createdBy?.name || 'Caissière'}</span>
+        <span style="color:#000;">Enregistré par :</span>
+        <span style="color:#000;font-weight:600;">${reservation.createdBy?.name || 'Caissière'}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Statut :</span>
-        <span style="font-weight:700;color:#1a120c;">${reservation.status === 'COMPLETED' ? 'PAYÉE À 100%' : 'EN COURS DE PAIEMENT'}</span>
+        <span style="color:#000;">Statut :</span>
+        <span style="font-weight:700;color:#000;">${reservation.status === 'COMPLETED' ? 'PAYÉE À 100%' : 'EN COURS DE PAIEMENT'}</span>
       </div>
     </div>
 
     ${renderBeautyItemsList(reservation.items || [])}
 
     <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin-top:6px;background:#fff;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10pt;font-weight:800;color:#1a120c;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10pt;font-weight:800;color:#000;">
         <span>MONTANT TOTAL :</span>
         <span style="font-size:11.5pt;">${Math.round(reservation.totalAmount).toLocaleString('fr-FR')} FCFA</span>
       </div>
       <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="font-size:7.5pt;font-weight:800;color:#7c6858;letter-spacing:0.8px;text-transform:uppercase;margin:3px 0 2px 0;">
+      <div style="font-size:7.5pt;font-weight:800;color:#000;letter-spacing:0.8px;text-transform:uppercase;margin:3px 0 2px 0;">
         HISTORIQUE DES VERSEMENTS (${reservation.payments?.length || 0}/3)
       </div>
-      ${paymentsList || '<div style="font-style:italic;font-size:7.5pt;color:#888;">Aucun versement effectué</div>'}
+      ${paymentsList || '<div style="font-style:italic;font-size:7.5pt;color:#000;">Aucun versement effectué</div>'}
       <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;color:#666;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;color:#000;">
         <span>Total déjà payé :</span>
-        <span style="font-weight:700;color:#1a120c;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
+        <span style="font-weight:700;color:#000;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:8.5pt;font-weight:800;color:#1a120c;margin-top:2px;">
+      <div style="display:flex;justify-content:space-between;font-size:8.5pt;font-weight:800;color:#000;margin-top:2px;">
         <span>RESTE À PAYER :</span>
         <span>${Math.round(remaining).toLocaleString('fr-FR')} FCFA</span>
       </div>
       ${lastPayment ? `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;padding:4px 6px;background:#fbf9f6;border:1px solid #2c1e14;border-radius:4px;font-weight:800;font-size:9pt;color:#1a120c;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;padding:4px 6px;background:#fbf9f6;border:1px solid #2c1e14;border-radius:4px;font-weight:800;font-size:9pt;color:#000;">
         <span>MONTANT PAYÉ CE JOUR :</span>
         <span style="font-size:10.5pt;">${Math.round(lastPaymentAmount).toLocaleString('fr-FR')} FCFA</span>
       </div>` : ''}
@@ -650,7 +649,7 @@ export const triggerFinalReservationPrint = (invoiceData) => {
       ? `Paiement final — Solde complet (${getPaymentMethodLabel(p.paymentMethod)})`
       : `Tranche ${p.installmentNumber || idx + 1}/3 (${getPaymentMethodLabel(p.paymentMethod)})${isLast ? ' [Ce jour]' : ''}`;
     return `
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:8pt;${isLast ? 'font-weight:700;color:#1a120c;' : 'color:#555;'}">
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:8pt;${isLast ? 'font-weight:700;color:#000;' : 'color:#000;'}">
         <span>${paymentLabel} :</span>
         <span style="font-weight:700;">${Math.round(p.amount).toLocaleString('fr-FR')} FCFA</span>
       </div>
@@ -659,55 +658,55 @@ export const triggerFinalReservationPrint = (invoiceData) => {
 
   const printHTML = `
     ${renderBeautyHeader('FACTURE DÉFINITIVE')}
-    <div style="background:#f3ece4;color:#4a3222;padding:3px 6px;border-radius:4px;margin-bottom:5px;text-align:center;font-size:7.5pt;font-weight:700;letter-spacing:0.5px;">
+    <div style="background:#f3ece4;color:#000;padding:3px 6px;border-radius:4px;margin-bottom:5px;text-align:center;font-size:7.5pt;font-weight:700;letter-spacing:0.5px;">
       SOLDE FINAL — Réservation N° ${invoiceData.sourceReservationNo || ''}
     </div>
     <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">N° Facture :</span>
-        <span style="font-weight:800;color:#1a120c;font-family:monospace;">${invoiceData.invoiceNumber}</span>
+        <span style="color:#000;">N° Facture :</span>
+        <span style="font-weight:800;color:#000;font-family:monospace;">${invoiceData.invoiceNumber}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Date :</span>
-        <span style="color:#1a120c;font-weight:600;">${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span>
+        <span style="color:#000;">Date :</span>
+        <span style="color:#000;font-weight:600;">${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin:1px 0;">
-        <span style="color:#666;">Caissière :</span>
-        <span style="color:#1a120c;font-weight:600;">${invoiceData.createdBy?.name || 'Caissière'}</span>
+        <span style="color:#000;">Caissière :</span>
+        <span style="color:#000;font-weight:600;">${invoiceData.createdBy?.name || 'Caissière'}</span>
       </div>
-      ${invoiceData.clientName ? `<div style="display:flex;justify-content:space-between;margin:1px 0;"><span style="color:#666;">Client :</span><span style="font-weight:700;color:#1a120c;">${invoiceData.clientName}</span></div>` : ''}
-      ${invoiceData.clientPhone ? `<div style="display:flex;justify-content:space-between;margin:1px 0;"><span style="color:#666;">Tél :</span><span style="font-weight:600;color:#1a120c;">${invoiceData.clientPhone}</span></div>` : ''}
+      ${invoiceData.clientName ? `<div style="display:flex;justify-content:space-between;margin:1px 0;"><span style="color:#000;">Client :</span><span style="font-weight:700;color:#000;">${invoiceData.clientName}</span></div>` : ''}
+      ${invoiceData.clientPhone ? `<div style="display:flex;justify-content:space-between;margin:1px 0;"><span style="color:#000;">Tél :</span><span style="font-weight:600;color:#000;">${invoiceData.clientPhone}</span></div>` : ''}
     </div>
 
     ${renderBeautyItemsList(invoiceData.items || [])}
 
     <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin-top:6px;background:#fff;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10pt;font-weight:800;color:#1a120c;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10pt;font-weight:800;color:#000;">
         <span>TOTAL COMMANDE :</span>
         <span style="font-size:11.5pt;">${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
       </div>
       <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="font-size:7.5pt;font-weight:800;color:#7c6858;letter-spacing:0.8px;text-transform:uppercase;margin:3px 0 2px 0;">
+      <div style="font-size:7.5pt;font-weight:800;color:#000;letter-spacing:0.8px;text-transform:uppercase;margin:3px 0 2px 0;">
         HISTORIQUE DES VERSEMENTS (${payments.length}/3)
       </div>
-      ${paymentsRows || '<div style="font-style:italic;font-size:7.5pt;color:#888;">Aucun versement enregistré</div>'}
+      ${paymentsRows || '<div style="font-style:italic;font-size:7.5pt;color:#000;">Aucun versement enregistré</div>'}
       <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;color:#666;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;color:#000;">
         <span>Total payé :</span>
-        <span style="font-weight:700;color:#1a120c;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
+        <span style="font-weight:700;color:#000;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:8.5pt;font-weight:800;color:#1a120c;margin-top:2px;">
+      <div style="display:flex;justify-content:space-between;font-size:8.5pt;font-weight:800;color:#000;margin-top:2px;">
         <span>SOLDE RESTANT :</span>
         <span style="color:#2d8a55;">0 FCFA</span>
       </div>
       ${lastPayment ? `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;padding:4px 6px;background:#fbf9f6;border:1px solid #2c1e14;border-radius:4px;font-weight:800;font-size:9pt;color:#1a120c;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;padding:4px 6px;background:#fbf9f6;border:1px solid #2c1e14;border-radius:4px;font-weight:800;font-size:9pt;color:#000;">
         <span>MONTANT PAYÉ CE JOUR :</span>
         <span style="font-size:10.5pt;">${Math.round(lastPaymentAmount).toLocaleString('fr-FR')} FCFA</span>
       </div>` : ''}
     </div>
 
-    <div style="text-align:center;margin-top:6px;font-size:8pt;font-weight:700;border:1.2px solid #2c1e14;border-radius:4px;padding:4px;background:#faf7f4;color:#1a120c;">
+    <div style="text-align:center;margin-top:6px;font-size:8pt;font-weight:700;border:1.2px solid #2c1e14;border-radius:4px;padding:4px;background:#faf7f4;color:#000;">
       RÉSERVATION ENTIÈREMENT SOLDÉE<br>Merci de votre confiance !
     </div>
 

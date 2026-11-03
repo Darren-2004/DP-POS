@@ -1,3 +1,4 @@
+import unicodedata
 import argparse
 import json
 import logging
@@ -143,7 +144,7 @@ def render_escpos_receipt(payload):
         lines.append("FACTURE DEFINITIVE")
     else:
         lines.append("TICKET DE CAISSE")
-    lines.extend(["NIU: P079216781512Z", "- - - - - - - - - - - - - - - - - - - - - - - -", "\x1ba\x00"])
+    lines.extend(["- - - - - - - - - - - - - - - - - - - - - - - -", "\x1ba\x00"])
 
     number = payload.get("stationName") if is_test_page else invoice.get("deliveryNo") or invoice.get("invoiceNumber") or invoice.get("reservationNo") or ""
     number_label = "Station:" if is_test_page else "N Reservation:" if reservation else "N Livraison:" if is_delivery else "N Ticket:"
@@ -213,9 +214,10 @@ def render_escpos_receipt(payload):
 
     footer = [
         "",
-        "\x1ba\x01Un article vendu n'est ni remboursable ni changeable",
-        _center_receipt_text("Merci de votre visite !"),
-        _center_receipt_text("Fait par TriSpark Digital"),
+        "\x1ba\x01" + "Révélez votre beauté chez Dimitri Perfect",
+        "Les prestations et articles vendus ne sont ni",
+        "remboursables ni échangeables.",
+        "Fait Par TriSpark Digital",
     ] + [""] * BOTTOM_BLANK_LINES
     lines.extend(footer)
 
@@ -243,7 +245,12 @@ def render_escpos_receipt(payload):
             lines = lines[:MAX_RECEIPT_LINES]
 
     text = "\n".join(lines) + "\n"
-    encoded = text.encode("cp1252", errors="replace")
+    # Supprimer tous les accents pour eviter les caracteres speciaux/chinois sur les imprimantes thermiques
+    text_clean = "".join(
+        c for c in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(c)
+    )
+    encoded = text_clean.encode("ascii", errors="replace")
     return b"\x1b@\x1bt\x10" + encoded + CUT_COMMAND
 
 
@@ -290,21 +297,7 @@ def print_raw(printer_name, data):
     import win32print
 
     printer_name = printer_name or win32print.GetDefaultPrinter()
-    if data.endswith(CUT_COMMAND):
-        # Send the cut byte as its OWN print job, not just a second write
-        # inside the same job. The Windows spooler typically buffers an
-        # entire job and flushes it to the port in one block regardless of
-        # any time.sleep() between WritePrinter() calls, so two writes in
-        # one job can still arrive at the printer back-to-back. Ending the
-        # first job (EndDocPrinter/ClosePrinter) forces that content to
-        # actually be handed off before we send the cut, giving the
-        # mechanism real time to finish feeding before the blade fires.
-        content, cut = data[: -len(CUT_COMMAND)], data[-len(CUT_COMMAND):]
-        _send_raw_job(printer_name, content)
-        time.sleep(CUT_SETTLE_SECONDS)
-        _send_raw_job(printer_name, cut)
-    else:
-        _send_raw_job(printer_name, data)
+    _send_raw_job(printer_name, data)
 
 
 def print_bin_file(printer_name, data):

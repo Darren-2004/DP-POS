@@ -3,8 +3,16 @@ $ErrorActionPreference = 'Stop'
 $packageDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $agentScriptSource = Join-Path $packageDirectory 'app\print_agent.py'
 $requirementsFile = Join-Path $packageDirectory 'requirements-agent.txt'
-$pythonCommand = Get-Command python.exe -ErrorAction Stop
-$pythonWindowless = Join-Path (Split-Path -Parent $pythonCommand.Source) 'pythonw.exe'
+# Locate Python: try python.exe first, fall back to py.exe launcher
+$pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+if (-not $pythonCommand) {
+    $pythonCommand = Get-Command py.exe -ErrorAction SilentlyContinue
+}
+if (-not $pythonCommand) {
+    throw 'Python not found. Install from https://python.org with Add to PATH checked.'
+}
+$pythonExeDir = Split-Path -Parent $pythonCommand.Source
+$pythonWindowless = Join-Path $pythonExeDir 'pythonw.exe'
 $pythonExecutable = if (Test-Path $pythonWindowless) { $pythonWindowless } else { $pythonCommand.Source }
 
 if (-not (Test-Path $agentScriptSource)) {

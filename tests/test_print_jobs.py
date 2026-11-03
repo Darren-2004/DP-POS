@@ -190,15 +190,12 @@ class PrintJobStoreTests(unittest.TestCase):
         rendered_text = receipt.decode("cp1252")
 
         self.assertLessEqual(len(rendered_text.splitlines()), 500)
-        self.assertIn("Merci de votre visite !", rendered_text)
-        self.assertEqual(rendered_text.count("Merci de votre visite !"), 1)
-        rendered_lines = rendered_text.splitlines()
-        self.assertIn("Merci de votre visite !", rendered_lines)
-        self.assertIn("Fait par TriSpark Digital", rendered_lines)
+        self.assertIn("Revelez votre beaute chez Dimitri Perfect", rendered_text)
+        self.assertIn("Fait Par TriSpark Digital", rendered_text)
         receipt_payload = receipt[:-len(CUT_COMMAND)].decode("cp1252")
         self.assertTrue(receipt_payload.endswith("\n" * 6))
         self.assertTrue(receipt.startswith(b"\x1b@\x1bt\x10"))
-        self.assertIn(b"Fait par TriSpark Digital", receipt)
+        self.assertIn(b"Fait Par TriSpark Digital", receipt)
         self.assertTrue(receipt.endswith(b"\x1dV\x00"))
 
     def test_receipt_renderer_emits_non_financial_test_page(self):
@@ -240,11 +237,9 @@ class PrintJobStoreTests(unittest.TestCase):
             ClosePrinter=lambda handle: None,
         )
         with patch.dict("sys.modules", {"win32print": fake_printer_api}):
-            with patch("app.print_agent.time.sleep") as sleep_mock:
-                print_raw("Receipt Printer", b"receipt body" + CUT_COMMAND)
+            print_raw("Receipt Printer", b"receipt body" + CUT_COMMAND)
 
-        self.assertEqual(writes, [b"receipt body", CUT_COMMAND])
-        sleep_mock.assert_called_once()
+        self.assertEqual(writes, [b"receipt body" + CUT_COMMAND])
 
     @patch("app.print_agent.os.name", "nt")
     def test_print_bin_file_writes_exact_bytes_and_shells_out_to_copy(self):

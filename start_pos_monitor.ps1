@@ -86,7 +86,10 @@ function Clear-PosPorts {
 }
 
 try {
-    if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    # Locate Python: accept python.exe or py.exe (Windows Launcher)
+    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pythonCmd) { $pythonCmd = Get-Command py -ErrorAction SilentlyContinue }
+    if (-not $pythonCmd) {
         throw 'Python was not found. Install Python and the packages in requirements.txt first.'
     }
     if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
