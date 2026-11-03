@@ -198,8 +198,13 @@ export default function App() {
         const data = await res.json();
         if (Array.isArray(data)) {
           setPrintStations(data);
-          if (data.length > 0 && !printStationId) {
+          if (data.length === 1 && !printStationId) {
             setPrintStationId(data[0].id);
+          } else if (data.length > 1 && !printStationId && currentUser?.shopType) {
+            const match = data.find((st) =>
+              st.name.toUpperCase().includes(currentUser.shopType.toUpperCase())
+            );
+            if (match) setPrintStationId(match.id);
           }
         }
       }

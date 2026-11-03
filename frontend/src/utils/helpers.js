@@ -252,7 +252,9 @@ export const watchPrintJob = (jobId, stationId) => {
 };
 
 export const getPrintMode = () => {
-  return localStorage.getItem('pos_print_mode_v2') || 'BROWSER_DIRECT';
+  const explicit = localStorage.getItem('pos_print_mode_v2');
+  if (explicit) return explicit;
+  return getCurrentPrintStationId() ? 'PRINT_AGENT' : 'BROWSER_DIRECT';
 };
 
 export const setPrintMode = (mode) => {

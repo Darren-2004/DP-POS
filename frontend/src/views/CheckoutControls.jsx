@@ -242,7 +242,7 @@ export default function CheckoutControls({
             onChange={(e) => setPrintStationId(e.target.value)}
             className="max-w-[220px] border-b border-neutral-200 bg-transparent py-1.5 text-xs text-neutral-900 outline-none focus:border-neutral-900"
           >
-            <option value="">Sélectionner...</option>
+            <option value="">Navigateur Chrome (par défaut)</option>
             {printStations.map((station) => (
               <option key={station.id} value={station.id}>
                 {station.name}{station.online ? ' (en ligne)' : ' (hors ligne)'}
