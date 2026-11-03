@@ -1,4 +1,5 @@
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -200,7 +201,7 @@ def create_reservation(store, body):
                 )
         result = _reservation_response(connection, reservation_id)
         station_id = body.get("stationId")
-        if station_id and initial_amount > 0:
+        if station_id:
             print_job = store.enqueue_in_transaction(
                 connection,
                 station_id,
@@ -229,6 +230,117 @@ def create_reservation(store, body):
     return result
 
 
+def _invoice_from_connection(connection, invoice_id):
+    invoice = connection.execute(
+        '''SELECT i.*, u.name AS creatorName FROM "Invoice" i
+           LEFT JOIN "User" u ON u.id = i.createdById WHERE i.id = ?''',
+        (invoice_id,),
+    ).fetchone()
+    if invoice is None:
+        return None
+    result = dict(invoice)
+    creator_name = result.pop("creatorName")
+    result["createdBy"] = {"name": creator_name} if creator_name else None
+    result["items"] = [
+        dict(item)
+        for item in connection.execute(
+            '''SELECT id, invoiceId, categoryName, price, COALESCE(qty, 1) AS qty, COALESCE(itemType, 'SERVICE') AS itemType
+               FROM "InvoiceItem" WHERE invoiceId = ?''', (invoice_id,)
+        ).fetchall()
+    ]
+    return result
+
+
+def _create_reservation_invoice_internal(connection, store, reservation_id, created_by_id=None, station_id=None):
+    reservation = connection.execute(
+        'SELECT * FROM "Reservation" WHERE id = ?', (reservation_id,)
+    ).fetchone()
+    if reservation is None:
+        raise ReservationError(404, "Réservation non trouvée")
+
+    client_phone = reservation["clientPhone"] if "clientPhone" in reservation.keys() else None
+    shop_type = (reservation["shopType"] if "shopType" in reservation.keys() and reservation["shopType"] else None) or "FEMME"
+
+    payments = connection.execute(
+        'SELECT * FROM "ReservationPayment" WHERE reservationId = ? ORDER BY installmentNumber',
+        (reservation_id,),
+    ).fetchall()
+    last_payment_method = payments[-1]["paymentMethod"] if payments else "CASH"
+
+    existing = connection.execute(
+        'SELECT id FROM "Invoice" WHERE reservationNo = ?', (reservation["reservationNo"],)
+    ).fetchone()
+    if existing:
+        invoice = _invoice_from_connection(connection, existing["id"])
+    else:
+        now = datetime.now(timezone.utc)
+        prefix = f"FAC-RES-{now.astimezone().strftime('%Y%m%d')}-"
+        number_rows = connection.execute(
+            'SELECT invoiceNumber FROM "Invoice" WHERE invoiceNumber LIKE ?', (f"{prefix}%",)
+        ).fetchall()
+        sequence = 0
+        for row in number_rows:
+            try:
+                sequence = max(sequence, int(row[0].rsplit("-", 1)[1]))
+            except (IndexError, ValueError):
+                continue
+        while True:
+            sequence += 1
+            invoice_number = f"{prefix}{sequence:04d}"
+            found = connection.execute(
+                'SELECT 1 FROM "Invoice" WHERE invoiceNumber = ?', (invoice_number,)
+            ).fetchone()
+            if not found:
+                break
+
+        invoice_id = str(uuid.uuid4())
+        creator_id = created_by_id or reservation["createdById"]
+        created_at = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        connection.execute(
+            '''INSERT INTO "Invoice" (
+                id, invoiceNumber, totalAmount, paymentMethod, clientName, clientPhone, shopType,
+                isReservation, reservationNo, isDelivery, deliveryFee, isPaid, status, createdAt, createdById
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0, 1, 'VALIDATED', ?, ?)''',
+            (
+                invoice_id, invoice_number, reservation["totalAmount"], last_payment_method,
+                reservation["clientName"], client_phone, shop_type,
+                reservation["reservationNo"], created_at, creator_id,
+            ),
+        )
+        reservation_items = connection.execute(
+            'SELECT categoryName, price, COALESCE(qty, 1) AS qty FROM "ReservationItem" WHERE reservationId = ?', (reservation_id,)
+        ).fetchall()
+        for item in reservation_items:
+            connection.execute(
+                'INSERT INTO "InvoiceItem" (id, invoiceId, categoryName, price, qty, itemType) VALUES (?, ?, ?, ?, ?, ?)',
+                (str(uuid.uuid4()), invoice_id, item["categoryName"], item["price"], item["qty"], "SERVICE"),
+            )
+        connection.execute(
+            'UPDATE "Reservation" SET status = \'COMPLETED\', updatedAt = ? WHERE id = ?',
+            (created_at, reservation_id),
+        )
+        invoice = _invoice_from_connection(connection, invoice_id)
+
+    invoice["reservationPayments"] = [dict(payment) for payment in payments]
+    invoice["sourceReservationNo"] = reservation["reservationNo"]
+    invoice["clientPhone"] = client_phone
+    invoice["clientName"] = reservation["clientName"]
+    invoice["shopType"] = shop_type
+
+    if station_id:
+        print_job = store.enqueue_in_transaction(
+            connection,
+            station_id,
+            {"invoiceData": invoice},
+            invoice["id"],
+            f"reservation-invoice:{invoice['id']}:{time.time()}",
+        )
+        print_job["stationId"] = station_id
+        invoice["printJob"] = print_job
+
+    return invoice
+
+
 def add_reservation_payment(store, reservation_id, body):
     try:
         amount = float(body.get("amount") or 0)
@@ -254,8 +366,8 @@ def add_reservation_payment(store, reservation_id, body):
         ).fetchall()
         current_paid = sum(float(payment["amount"] or 0) for payment in payments)
         remaining = float(reservation["totalAmount"]) - current_paid
-        if remaining > 0 and amount > remaining + 0.01:
-            raise ReservationError(400, f"Le montant saisi ({body.get('amount')} FCFA) dépasse le solde restant ({remaining} FCFA)")
+        if remaining <= 0 or amount > remaining + 0.01:
+            raise ReservationError(400, f"Le montant saisi ({body.get('amount')} FCFA) dépasse le solde restant ({max(0, remaining)} FCFA)")
         now = _now()
         connection.execute(
             '''INSERT INTO "ReservationPayment" (
@@ -266,14 +378,22 @@ def add_reservation_payment(store, reservation_id, body):
                 len(payments) + 1, now, created_by_id,
             ),
         )
-        if reservation["totalAmount"] > 0 and current_paid + amount >= float(reservation["totalAmount"]) - 0.01:
+        is_completed = reservation["totalAmount"] > 0 and current_paid + amount >= float(reservation["totalAmount"]) - 0.01
+        if is_completed:
             connection.execute(
                 'UPDATE "Reservation" SET status = \'COMPLETED\', updatedAt = ? WHERE id = ?',
                 (now, reservation_id),
             )
         result = _reservation_response(connection, reservation_id)
         station_id = body.get("stationId")
-        if station_id:
+        if is_completed:
+            invoice = _create_reservation_invoice_internal(
+                connection, store, reservation_id, created_by_id, station_id
+            )
+            result["invoice"] = invoice
+            if invoice.get("printJob"):
+                result["printJob"] = invoice["printJob"]
+        elif station_id:
             print_job = store.enqueue_in_transaction(
                 connection,
                 station_id,
@@ -417,80 +537,9 @@ def create_reservation_invoice(store, reservation_id, created_by_id=None, statio
     connection = store._open_connection()
     try:
         connection.execute("BEGIN IMMEDIATE")
-        reservation = connection.execute(
-            'SELECT * FROM "Reservation" WHERE id = ?', (reservation_id,)
-        ).fetchone()
-        if reservation is None:
-            raise ReservationError(404, "Réservation non trouvée")
-        existing = connection.execute(
-            'SELECT id FROM "Invoice" WHERE reservationNo = ?', (reservation["reservationNo"],)
-        ).fetchone()
-        if existing:
-            invoice = _invoice_from_connection(connection, existing["id"])
-            connection.commit()
-            return invoice
-
-        payments = connection.execute(
-            'SELECT * FROM "ReservationPayment" WHERE reservationId = ? ORDER BY installmentNumber',
-            (reservation_id,),
-        ).fetchall()
-        last_payment_method = payments[-1]["paymentMethod"] if payments else "CASH"
-        now = datetime.now(timezone.utc)
-        prefix = f"FAC-RES-{now.astimezone().strftime('%Y%m%d')}-"
-        number_rows = connection.execute(
-            'SELECT invoiceNumber FROM "Invoice" WHERE invoiceNumber LIKE ?', (f"{prefix}%",)
-        ).fetchall()
-        sequence = 0
-        for row in number_rows:
-            try:
-                sequence = max(sequence, int(row[0].rsplit("-", 1)[1]))
-            except (IndexError, ValueError):
-                continue
-        while True:
-            sequence += 1
-            invoice_number = f"{prefix}{sequence:04d}"
-            found = connection.execute(
-                'SELECT 1 FROM "Invoice" WHERE invoiceNumber = ?', (invoice_number,)
-            ).fetchone()
-            if not found:
-                break
-
-        invoice_id = str(uuid.uuid4())
-        creator_id = created_by_id or reservation["createdById"]
-        created_at = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        connection.execute(
-            '''INSERT INTO "Invoice" (
-                id, invoiceNumber, totalAmount, paymentMethod, clientName, clientPhone, shopType,
-                isReservation, reservationNo, isDelivery, deliveryFee, isPaid, status, createdAt, createdById
-            ) VALUES (?, ?, ?, ?, ?, NULL, ?, 1, ?, 0, 0, 0, 'VALIDATED', ?, ?)''',
-            (
-                invoice_id, invoice_number, reservation["totalAmount"], last_payment_method,
-                reservation["clientName"], reservation.get("shopType") or "FEMME", reservation["reservationNo"],
-                created_at, creator_id,
-            ),
+        invoice = _create_reservation_invoice_internal(
+            connection, store, reservation_id, created_by_id, station_id
         )
-        reservation_items = connection.execute(
-            'SELECT categoryName, price, COALESCE(qty, 1) AS qty FROM "ReservationItem" WHERE reservationId = ?', (reservation_id,)
-        ).fetchall()
-        for item in reservation_items:
-            connection.execute(
-                'INSERT INTO "InvoiceItem" (id, invoiceId, categoryName, price, qty, itemType) VALUES (?, ?, ?, ?, ?, ?)',
-                (str(uuid.uuid4()), invoice_id, item["categoryName"], item["price"], item["qty"], "SERVICE"),
-            )
-        invoice = _invoice_from_connection(connection, invoice_id)
-        invoice["reservationPayments"] = [dict(payment) for payment in payments]
-        invoice["sourceReservationNo"] = reservation["reservationNo"]
-        invoice["clientPhone"] = reservation["clientPhone"]
-        if station_id:
-            print_job = store.enqueue_in_transaction(
-                connection,
-                station_id,
-                {"invoiceData": invoice},
-                invoice_id,
-                f"reservation-invoice:{invoice_id}",
-            )
-            print_job["stationId"] = station_id
-            invoice["printJob"] = print_job
         connection.commit()
         return invoice
     except UnknownStation as error:
@@ -507,25 +556,6 @@ def create_reservation_invoice(store, reservation_id, created_by_id=None, statio
         raise
     finally:
         connection.close()
-
-
-def _invoice_from_connection(connection, invoice_id):
-    invoice = connection.execute(
-        '''SELECT i.*, u.name AS creatorName FROM "Invoice" i
-           LEFT JOIN "User" u ON u.id = i.createdById WHERE i.id = ?''',
-        (invoice_id,),
-    ).fetchone()
-    result = dict(invoice)
-    creator_name = result.pop("creatorName")
-    result["createdBy"] = {"name": creator_name} if creator_name else None
-    result["items"] = [
-        dict(item)
-        for item in connection.execute(
-            '''SELECT id, invoiceId, categoryName, price, COALESCE(qty, 1) AS qty, COALESCE(itemType, 'SERVICE') AS itemType
-               FROM "InvoiceItem" WHERE invoiceId = ?''', (invoice_id,)
-        ).fetchall()
-    ]
-    return result
 
 
 def reservation_payments(store, query):

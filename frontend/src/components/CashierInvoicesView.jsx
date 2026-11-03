@@ -5,8 +5,10 @@ import StatusChip from './StatusChip';
 import { formatFCFA, triggerPrint, getPaymentMethodLabel, getTodayDateStr, cx, isReservationInvoice } from '../utils/helpers';
 import { API_BASE } from '../utils/constants';
 import { EmptyState, ErrorState, LoadingState } from './DesignSystem';
+import { useShopNames } from './ShopNamesContext';
 
 export default function CashierInvoicesView({ currentUser }) {
+  const { shopNames } = useShopNames();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -228,7 +230,7 @@ export default function CashierInvoicesView({ currentUser }) {
                       {inv.clientName || 'Client de passage'}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-neutral-700">
-                      {inv.shopType === 'HOMME' ? 'Shop 1' : 'Shop 2'}
+                      {inv.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
                     </td>
                     <td className="px-3 py-2.5 text-neutral-900">
                       {getPaymentMethodLabel(inv.paymentMethod)}
@@ -325,7 +327,7 @@ export default function CashierInvoicesView({ currentUser }) {
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-neutral-500">Shop</span>
-                  <span className="font-medium text-neutral-900">{selectedInvoice.shopType === 'HOMME' ? 'Shop 1' : 'Shop 2'}</span>
+                  <span className="font-medium text-neutral-900">{selectedInvoice.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}</span>
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-neutral-500">Mode de paiement</span>

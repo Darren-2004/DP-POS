@@ -26,6 +26,7 @@ import ReservationsPanel from './admin/ReservationsPanel';
 import DevicesPanel from './admin/DevicesPanel';
 import SettingsPanel from './admin/SettingsPanel';
 import { API_BASE } from '../utils/constants';
+import { useShopNames } from '../components/ShopNamesContext';
 
 export default function AdminView({
   currentUser,
@@ -40,6 +41,7 @@ export default function AdminView({
 }) {
   const isAdmin = currentUser?.role === 'ADMIN';
   const isManager = currentUser?.role === 'MANAGER';
+  const { shopNames } = useShopNames();
   const assignedManagerShop = users.find((user) => user.id === currentUser?.id)?.shopType;
   const [adminTab, setAdminTab] = useState(isAdmin ? 'global' : 'dashboard');
   const [stats, setStats] = useState({ today: {}, week: {}, month: {} });
@@ -194,8 +196,8 @@ export default function AdminView({
           title: 'PILOTAGE DU RÉSEAU',
           items: [
             { id: 'global', label: 'Vue Réseau Consolidée', icon: <TrendingUp className="h-4 w-4" /> },
-            { id: 'shop1', label: 'Shop 1', icon: <Store className="h-4 w-4" /> },
-            { id: 'shop2', label: 'Shop 2', icon: <Store className="h-4 w-4" /> },
+            { id: 'shop1', label: shopNames.HOMME, icon: <Store className="h-4 w-4" /> },
+            { id: 'shop2', label: shopNames.FEMME, icon: <Store className="h-4 w-4" /> },
           ],
         },
         {
@@ -340,7 +342,7 @@ export default function AdminView({
                 En ligne
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-neutral-500 font-medium">Shop 1 & Shop 2</p>
+            <p className="mt-1 text-[11px] text-neutral-500 font-medium">{shopNames.HOMME} & {shopNames.FEMME}</p>
           </div>
         </div>
       </aside>

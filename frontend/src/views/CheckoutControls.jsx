@@ -18,6 +18,8 @@ export default function CheckoutControls({
   currentUser,
   serverOnline,
   printStationId,
+  printStations = [],
+  setPrintStationId,
   stationSelectionRequired = false,
   isSubmittingOrder,
   showReservationMode,
@@ -132,11 +134,12 @@ export default function CheckoutControls({
             <label className="block">
               <span className="mb-1 block text-xs text-neutral-500">Acompte (optionnel)</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 min="0"
                 max={total}
                 value={reservationAdvanceInput}
-                onChange={(e) => setReservationAdvanceInput(e.target.value)}
+                onChange={(e) => setReservationAdvanceInput(e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="0 FCFA"
                 className={fieldCls}
               />
@@ -159,6 +162,7 @@ export default function CheckoutControls({
               if (c.phone) setClientPhone(c.phone);
             }}
             placeholder="Nom ou prénom du client"
+            className={fieldCls}
           />
           <input
             type="tel"
@@ -197,34 +201,56 @@ export default function CheckoutControls({
 
           {/* Split Payment inputs if multiple */}
           {selectedMethods.length > 1 && (
-            <div className="mt-3 space-y-2 border-t border-neutral-200 pt-3">
+            <div className="mt-3 border-t border-neutral-200 pt-3">
               <div className="flex justify-between text-xs text-neutral-500">
                 <span>Répartition du montant</span>
                 <span>Restant : {formatFCFA(balance)}</span>
               </div>
-              {selectedMethods.map((m) => {
-                const label = PAYMENT_METHODS.find((p) => p.id === m)?.label || m;
-                return (
-                  <div key={m} className="flex items-center gap-2">
-                    <span className="w-28 shrink-0 text-xs text-neutral-500">{label}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={methodAmounts[m] || ''}
-                      onChange={(e) => handleAmountChange(m, e.target.value)}
-                      placeholder="0"
-                      className={cx(fieldCls, 'py-1')}
-                    />
-                    <span className="shrink-0 text-xs text-neutral-400">FCFA</span>
-                  </div>
-                );
-              })}
+              <div
+                className="mt-2 grid gap-2"
+                style={{ gridTemplateColumns: `repeat(${selectedMethods.length}, minmax(0, 1fr))` }}
+              >
+                {selectedMethods.map((m) => {
+                  const label = PAYMENT_METHODS.find((p) => p.id === m)?.label || m;
+                  return (
+                    <label key={m} className="min-w-0">
+                      <span className="mb-1 block truncate text-xs text-neutral-500">{label}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={methodAmounts[m] || ''}
+                        onChange={(e) => handleAmountChange(m, e.target.value)}
+                        placeholder="0"
+                        className={cx(fieldCls, 'py-1')}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
       )}
 
       {/* Final Action Button */}
+      {printStations.length > 0 && setPrintStationId && (
+        <label className="flex items-center justify-between gap-3 border-t border-neutral-200 py-3 text-xs">
+          <span className="shrink-0 font-medium text-neutral-600">Station d’impression</span>
+          <select
+            aria-label="Station d’impression de cette caisse"
+            value={printStationId || ''}
+            onChange={(e) => setPrintStationId(e.target.value)}
+            className="max-w-[220px] border-b border-neutral-200 bg-transparent py-1.5 text-xs text-neutral-900 outline-none focus:border-neutral-900"
+          >
+            <option value="">Sélectionner...</option>
+            {printStations.map((station) => (
+              <option key={station.id} value={station.id}>
+                {station.name}{station.online ? ' (en ligne)' : ' (hors ligne)'}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="flex items-center justify-between border-t border-neutral-200 pt-4">
         <div>
           <div className="text-xs text-neutral-500">Total</div>

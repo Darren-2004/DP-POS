@@ -11,10 +11,16 @@ import {
   Clock,
   Truck,
   RotateCcw,
+  X,
+  Receipt,
+  Eye,
+  MapPin,
+  User,
 } from 'lucide-react';
 import { PageHeader, EmptyState, LoadingState } from '../../components/DesignSystem';
-import { formatFCFA, triggerPrint, getTodayDateStr } from '../../utils/helpers';
+import { formatFCFA, triggerPrint, getTodayDateStr, getPaymentMethodLabel } from '../../utils/helpers';
 import { API_BASE } from '../../utils/constants';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 export default function InvoicesJournalPanel({
   invoices = [],
@@ -28,9 +34,11 @@ export default function InvoicesJournalPanel({
   shopType = null,
   currentUser,
 }) {
+  const { shopNames } = useShopNames();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [methodFilter, setMethodFilter] = useState('ALL');
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [pendingCancelInvoice, setPendingCancelInvoice] = useState(null);
   const [adminPin, setAdminPin] = useState('');
   const [cancelReason, setCancelReason] = useState('Erreur de caisse');
@@ -188,7 +196,11 @@ export default function InvoicesJournalPanel({
                 const isHomme = inv.shopType === 'HOMME';
 
                 return (
-                  <tr key={inv.id} className="hover:bg-neutral-50/80 transition">
+                  <tr
+                    key={inv.id}
+                    onClick={() => setSelectedInvoice(inv)}
+                    className="hover:bg-[#faf7f4] transition cursor-pointer"
+                  >
                     <td className="py-2.5 px-3 font-semibold text-neutral-900">
                       {inv.invoiceNumber}
                     </td>
@@ -215,7 +227,7 @@ export default function InvoicesJournalPanel({
                           isHomme ? 'bg-amber-100 text-amber-800' : 'bg-neutral-100 text-neutral-800'
                         }`}
                       >
-                        {isHomme ? 'Shop 1' : 'Shop 2'}
+                        {isHomme ? shopNames.HOMME : shopNames.FEMME}
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-neutral-600 font-mono text-[11px]">
@@ -237,7 +249,15 @@ export default function InvoicesJournalPanel({
                       {formatFCFA(inv.totalAmount)}
                     </td>
                     <td className="py-2.5 px-3 text-right">
-                      <div className="inline-flex items-center gap-2">
+                      <div className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedInvoice(inv)}
+                          className="rounded p-1 text-neutral-400 hover:bg-[#b38059]/15 hover:text-[#825534] transition"
+                          title="Voir les détails"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => triggerPrint(inv)}
@@ -267,6 +287,223 @@ export default function InvoicesJournalPanel({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Invoice Detail Drawer */}
+      {selectedInvoice && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-neutral-900/30 cursor-pointer"
+          onClick={() => setSelectedInvoice(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white border-l border-neutral-200 h-full flex flex-col overflow-hidden cursor-default shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 shrink-0 bg-[#faf7f4]">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#b38059]/15">
+                  <Receipt className="h-4 w-4 text-[#825534]" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-[#b38059]">{selectedInvoice.invoiceNumber}</div>
+                  <div className="text-[11px] text-neutral-500">Détails de la facture</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedInvoice(null)}
+                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-900 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Drawer Scrollable Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* Meta info */}
+              <div className="space-y-2 text-xs border-b border-neutral-100 pb-5">
+                <div className="flex justify-between py-1">
+                  <span className="text-neutral-500">Date &amp; Heure</span>
+                  <span className="font-medium text-neutral-900">
+                    {selectedInvoice.createdAt
+                      ? new Date(selectedInvoice.createdAt).toLocaleString('fr-FR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })
+                      : '--'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-neutral-500">Caissier</span>
+                  <span className="font-medium text-neutral-900">
+                    {selectedInvoice.createdBy?.name || 'Caissier'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-neutral-500">Client</span>
+                  <span className="font-semibold text-[#b38059]">
+                    {selectedInvoice.clientName || 'Client de passage'}
+                  </span>
+                </div>
+                {selectedInvoice.clientPhone && (
+                  <div className="flex justify-between py-1">
+                    <span className="text-neutral-500">Téléphone</span>
+                    <span className="font-medium text-neutral-900">{selectedInvoice.clientPhone}</span>
+                  </div>
+                )}
+                <div className="flex justify-between py-1">
+                  <span className="text-neutral-500">Établissement</span>
+                  <span className={`inline-flex rounded px-2 py-0.5 text-[10px] font-semibold ${
+                    selectedInvoice.shopType === 'HOMME'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-neutral-100 text-neutral-800'
+                  }`}>
+                    {selectedInvoice.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-neutral-500">Mode de paiement</span>
+                  <span className="font-semibold text-emerald-700">
+                    {getPaymentMethodLabel(selectedInvoice.paymentMethod)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 items-center">
+                  <span className="text-neutral-500">Statut</span>
+                  {selectedInvoice.status === 'VALIDATED' ? (
+                    <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      <CheckCircle2 className="h-3 w-3" /> Validée
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                      <XCircle className="h-3 w-3" /> Annulée
+                    </span>
+                  )}
+                </div>
+                {selectedInvoice.status === 'CANCELLED' && selectedInvoice.cancellationReason && (
+                  <div className="rounded bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+                    <span className="font-semibold">Motif :</span> {selectedInvoice.cancellationReason}
+                  </div>
+                )}
+
+                {/* Reservation badge */}
+                {selectedInvoice.isReservation && selectedInvoice.reservationNo && (
+                  <div className="flex justify-between py-1">
+                    <span className="text-neutral-500">Réservation N°</span>
+                    <span className="font-semibold text-[#b38059]">{selectedInvoice.reservationNo}</span>
+                  </div>
+                )}
+
+                {/* Delivery info */}
+                {selectedInvoice.isDelivery && (
+                  <>
+                    {selectedInvoice.deliveryAddress && (
+                      <div className="flex justify-between py-1 items-start gap-2">
+                        <span className="text-neutral-500 shrink-0">Adresse livraison</span>
+                        <span className="font-medium text-neutral-900 text-right">{selectedInvoice.deliveryAddress}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.deliveryPerson && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-neutral-500">Livreur</span>
+                        <span className="font-medium text-neutral-900">{selectedInvoice.deliveryPerson}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.deliveryFee != null && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-neutral-500">Frais de livraison</span>
+                        <span className="font-medium text-neutral-900">{formatFCFA(selectedInvoice.deliveryFee)}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.deliveryStatus && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-neutral-500">Statut livraison</span>
+                        <span className="font-medium text-neutral-900">{selectedInvoice.deliveryStatus}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                  Prestations &amp; Produits
+                </div>
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead className="border-b border-neutral-200 text-neutral-500 font-semibold">
+                    <tr>
+                      <th className="py-2 pr-2">Désignation</th>
+                      <th className="py-2 text-center w-10">Qté</th>
+                      <th className="py-2 text-right w-20">P/U</th>
+                      <th className="py-2 text-right w-20">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {(selectedInvoice.items || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-neutral-400 italic">
+                          Aucun article enregistré
+                        </td>
+                      </tr>
+                    ) : (
+                      (selectedInvoice.items || []).map((item, idx) => {
+                        const qty = Number(item.qty || 1);
+                        const price = Number(item.price || 0);
+                        return (
+                          <tr key={idx}>
+                            <td className="py-2 pr-2 text-neutral-900 leading-snug">
+                              {item.categoryName || item.name || '—'}
+                            </td>
+                            <td className="py-2 text-center text-neutral-500">{qty}</td>
+                            <td className="py-2 text-right text-neutral-500">{formatFCFA(price)}</td>
+                            <td className="py-2 text-right font-bold text-[#b38059]">{formatFCFA(price * qty)}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Total Box */}
+              <div className="rounded-lg bg-[#faf7f4] border border-[#b38059]/30 px-4 py-3 flex items-center justify-between">
+                <div className="text-xs font-semibold text-neutral-600">Montant Total Réglé</div>
+                <div className="text-lg font-bold text-[#b38059] tabular-nums">
+                  {formatFCFA(selectedInvoice.totalAmount)}
+                </div>
+              </div>
+            </div>
+
+            {/* Drawer Footer Actions */}
+            <div className="border-t border-neutral-200 px-6 py-4 shrink-0 space-y-2 bg-white">
+              <button
+                type="button"
+                onClick={() => triggerPrint(selectedInvoice)}
+                className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#b38059] hover:bg-[#9d6f4b] py-2.5 text-xs font-semibold text-white transition"
+              >
+                <Printer className="h-4 w-4" />
+                Réimprimer ce ticket
+              </button>
+              {selectedInvoice.status === 'VALIDATED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedInvoice(null);
+                    setPendingCancelInvoice(selectedInvoice);
+                    setAdminPin('');
+                    setCancelError('');
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 py-2.5 text-xs font-semibold text-rose-700 transition"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Annuler cette facture
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

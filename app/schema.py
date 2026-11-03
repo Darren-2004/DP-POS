@@ -114,6 +114,11 @@ TABLES = {
         createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )''',
+    "ShopSettings": '''CREATE TABLE IF NOT EXISTS "ShopSettings" (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        shop1Name TEXT NOT NULL DEFAULT 'Shop 1',
+        shop2Name TEXT NOT NULL DEFAULT 'Shop 2'
+    )''',
 }
 
 

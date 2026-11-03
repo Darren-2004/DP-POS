@@ -89,6 +89,20 @@ def _row(column_one, column_two, column_three, column_four, width=48):
     return "\n".join(result)
 
 
+def _format_item_escpos(name, quantity, price, width=48):
+    total = price * quantity
+    total_str = f"{_amount(total)} FCFA"
+    calc_str = f"  {quantity} x {_amount(price)}"
+    import textwrap
+    clean_name = str(name).strip()
+    name_lines = textwrap.wrap(clean_name, width=width) or [clean_name]
+    if len(calc_str) + len(total_str) < width:
+        detail_line = calc_str + " " * (width - len(calc_str) - len(total_str)) + total_str
+    else:
+        detail_line = calc_str + "\n" + total_str.rjust(width)
+    return "\n".join(name_lines + [detail_line])
+
+
 def _payment_label(method):
     value = str(method or "").strip()
     labels = {"CASH": "Especes", "ONLINE": "Mobile Money", "ORANGE_MONEY": "Orange Money"}
@@ -115,7 +129,10 @@ def render_escpos_receipt(payload):
     invoice = payload.get("invoiceData") or reservation or {}
     is_test_page = bool(payload.get("testPage"))
     is_delivery = bool(invoice.get("isDelivery"))
-    lines = ["\x1ba\x01\x1bE\x01\x1d!\x11SALON DE BEAUTE\x1d!\x00\x1bE\x00"]
+    lines = [
+        "\x1ba\x01\x1bE\x01\x1d!\x11DIMITRI PERFECT\x1d!\x00\x1bE\x00",
+        "SALON DE BEAUTE & SOINS",
+    ]
     if is_test_page:
         lines.append("TEST D'IMPRESSION")
     elif reservation:
@@ -126,7 +143,7 @@ def render_escpos_receipt(payload):
         lines.append("FACTURE DEFINITIVE")
     else:
         lines.append("TICKET DE CAISSE")
-    lines.extend(["NIU: P079216781512Z", " ", "\x1ba\x00"])
+    lines.extend(["NIU: P079216781512Z", "- - - - - - - - - - - - - - - - - - - - - - - -", "\x1ba\x00"])
 
     number = payload.get("stationName") if is_test_page else invoice.get("deliveryNo") or invoice.get("invoiceNumber") or invoice.get("reservationNo") or ""
     number_label = "Station:" if is_test_page else "N Reservation:" if reservation else "N Livraison:" if is_delivery else "N Ticket:"
@@ -151,7 +168,7 @@ def render_escpos_receipt(payload):
     if client_phone:
         lines.append(_key_value("Tel client:", client_phone))
 
-    lines.extend(["-" * 48, _row("Designation", "Qte", "P/U", "Total"), "-" * 48])
+    lines.extend(["-" * 48, _key_value("PRESTATIONS & ARTICLES", "TOTAL"), "-" * 48])
     item_start = len(lines)
     grouped = {}
     for item in invoice.get("items") or []:
@@ -161,7 +178,7 @@ def render_escpos_receipt(payload):
         if key not in grouped:
             grouped[key] = 0
         grouped[key] += int(item.get("qty") or 1)
-    item_rows = [_row(name, quantity, _amount(price), _amount(price * quantity)) for (name, price), quantity in grouped.items()]
+    item_rows = [_format_item_escpos(name, quantity, price) for (name, price), quantity in grouped.items()]
     lines.extend(item_rows)
     item_end = len(lines)
 

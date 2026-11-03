@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scissors, CalendarDays, Receipt, BarChart2, Printer, LogOut, CheckCircle2 } from 'lucide-react';
+import { Scissors, CalendarDays, Receipt, BarChart2, LogOut } from 'lucide-react';
 import { cx } from '../utils/helpers';
 
 const CASHIER_TABS = [
@@ -16,11 +16,6 @@ export default function Header({
   onLogout,
   cashierTab,
   setCashierTab,
-  printStations = [],
-  printStationId,
-  setPrintStationId,
-  printMode,
-  setPrintMode,
 }) {
   const isCashier = currentUser?.role === 'CASHIER' && currentView === 'cashier';
 
@@ -71,28 +66,8 @@ export default function Header({
         </nav>
       )}
 
-      {/* Right Controls: Printer, User Info, Admin/Cashier Toggle, Logout */}
+      {/* Right Controls: User Info and Logout */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Printer Selector */}
-        {printStations && printStations.length > 0 && setPrintStationId && (
-          <div className="hidden sm:flex items-center gap-1.5 rounded-md bg-white/15 px-2.5 py-1 text-xs text-white">
-            <Printer className="h-3.5 w-3.5 text-white/80" />
-            <select
-              aria-label="Imprimante de cette caisse"
-              value={printStationId}
-              onChange={(e) => setPrintStationId(e.target.value)}
-              className="bg-transparent text-xs text-white outline-none max-w-[130px] font-medium cursor-pointer"
-            >
-              <option value="" className="text-neutral-900 bg-white">Imprimante...</option>
-              {printStations.map((st) => (
-                <option key={st.id} value={st.id} className="text-neutral-900 bg-white">
-                  {st.name} {st.online ? '✓' : '(Hors ligne)'}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         {/* Server Status Indicator */}
         {serverOnline ? (
           <div className="hidden xl:inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold text-white">

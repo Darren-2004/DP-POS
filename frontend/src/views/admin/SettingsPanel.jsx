@@ -14,12 +14,20 @@ import {
 import { PageHeader, LoadingState } from '../../components/DesignSystem';
 import { API_BASE } from '../../utils/constants';
 import { showToast } from '../../utils/helpers';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 export default function SettingsPanel({ currentUser }) {
+  const { shopNames, saveShopNames } = useShopNames();
   const [backups, setBackups] = useState([]);
   const [diagnostics, setDiagnostics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [shopNameInputs, setShopNameInputs] = useState(shopNames);
+  const [shopNamesSaving, setShopNamesSaving] = useState(false);
+
+  useEffect(() => {
+    setShopNameInputs(shopNames);
+  }, [shopNames]);
 
   const fetchSystemData = async () => {
     setLoading(true);
@@ -64,6 +72,19 @@ export default function SettingsPanel({ currentUser }) {
     }
   };
 
+  const handleSaveShopNames = async (event) => {
+    event.preventDefault();
+    setShopNamesSaving(true);
+    try {
+      await saveShopNames(shopNameInputs);
+      showToast('Les noms des shops ont été enregistrés.', 'success');
+    } catch (error) {
+      showToast(error.message || 'Erreur lors de l’enregistrement des noms.', 'error');
+    } finally {
+      setShopNamesSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6 bg-white pb-12">
       <PageHeader
@@ -86,20 +107,43 @@ export default function SettingsPanel({ currentUser }) {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3 text-xs">
+        <form onSubmit={handleSaveShopNames} className="grid gap-4 sm:grid-cols-3 text-xs">
           <div className="rounded border border-neutral-100 bg-neutral-50 p-3">
-            <span className="text-neutral-400 font-medium">Nom commercial</span>
-            <p className="mt-1 font-bold text-neutral-900 text-sm">Dimitri Perfect</p>
+            <label htmlFor="shop-name-1" className="text-neutral-400 font-medium">Nom du Shop 1</label>
+            <input
+              id="shop-name-1"
+              maxLength={80}
+              required
+              value={shopNameInputs.HOMME}
+              onChange={(event) => setShopNameInputs((current) => ({ ...current, HOMME: event.target.value }))}
+              className="mt-1 w-full border-b border-neutral-200 bg-transparent py-1 text-sm font-bold text-neutral-900 outline-none focus:border-[#b38059]"
+            />
           </div>
           <div className="rounded border border-neutral-100 bg-neutral-50 p-3">
-            <span className="text-neutral-400 font-medium">Points de vente</span>
-            <p className="mt-1 font-bold text-neutral-900 text-sm">Shop 1 & Shop 2</p>
+            <label htmlFor="shop-name-2" className="text-neutral-400 font-medium">Nom du Shop 2</label>
+            <input
+              id="shop-name-2"
+              maxLength={80}
+              required
+              value={shopNameInputs.FEMME}
+              onChange={(event) => setShopNameInputs((current) => ({ ...current, FEMME: event.target.value }))}
+              className="mt-1 w-full border-b border-neutral-200 bg-transparent py-1 text-sm font-bold text-neutral-900 outline-none focus:border-[#b38059]"
+            />
           </div>
           <div className="rounded border border-neutral-100 bg-neutral-50 p-3">
             <span className="text-neutral-400 font-medium">Devise monétaire</span>
             <p className="mt-1 font-bold text-[#b38059] text-sm">Franc CFA (FCFA)</p>
           </div>
-        </div>
+          <div className="sm:col-span-3 flex justify-end">
+            <button
+              type="submit"
+              disabled={shopNamesSaving}
+              className="rounded bg-[#b38059] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#9e6d47] disabled:opacity-50"
+            >
+              {shopNamesSaving ? 'Enregistrement...' : 'Enregistrer les noms'}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Database Health Card */}

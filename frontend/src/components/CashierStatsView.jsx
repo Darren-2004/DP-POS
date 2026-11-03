@@ -3,8 +3,10 @@ import { BarChart2, DollarSign, CreditCard, Calendar, Receipt, Eye, Printer, X, 
 import { formatFCFA, getTodayDateStr, cx, getPaymentMethodLabel, triggerPrint, isReservationInvoice } from '../utils/helpers';
 import { API_BASE } from '../utils/constants';
 import { EmptyState, ErrorState, LoadingState } from './DesignSystem';
+import { useShopNames } from './ShopNamesContext';
 
 export default function CashierStatsView({ currentUser }) {
+  const { shopNames } = useShopNames();
   const [period, setPeriod] = useState('today');
   const [customDate, setCustomDate] = useState(getTodayDateStr());
   const [customEndDate, setCustomEndDate] = useState(getTodayDateStr());
@@ -360,7 +362,7 @@ export default function CashierStatsView({ currentUser }) {
                           'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border',
                           res.shopType === 'HOMME' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-neutral-100 text-neutral-800 border-neutral-200'
                         )}>
-                          {res.shopType === 'HOMME' ? 'Shop 1' : 'Shop 2'}
+                          {res.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 font-mono font-bold text-right text-neutral-900">{formatFCFA(res.totalAmount)}</td>

@@ -6,11 +6,13 @@ import { EmptyState, ErrorState, LoadingState, PageHeader } from '../../componen
 import { Trash2, Pencil, Plus, Scissors, Check, X } from 'lucide-react';
 import { API_BASE } from '../../utils/constants';
 import { showToast, formatFCFA } from '../../utils/helpers';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 const underlineInputCls =
   'w-full border-0 border-b border-neutral-200 bg-transparent py-1.5 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none';
 
 export default function Categories({ categories = [], fetchCategories, loading = false, error = '', isManager = false, managerShopType = null }) {
+  const { shopNames } = useShopNames();
   const isShopManager = isManager;
   const [showCreateCat, setShowCreateCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -410,8 +412,8 @@ export default function Categories({ categories = [], fetchCategories, loading =
                   className={underlineInputCls}
                 >
                   <option value="ALL">Tous les shops (Mixte)</option>
-                  <option value="FEMME">Shop 2</option>
-                  <option value="HOMME">Shop 1</option>
+                  <option value="FEMME">{shopNames.FEMME}</option>
+                  <option value="HOMME">{shopNames.HOMME}</option>
                 </select>
               </Field>
             )}

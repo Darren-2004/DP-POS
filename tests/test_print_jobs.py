@@ -261,7 +261,7 @@ class PrintJobStoreTests(unittest.TestCase):
 
         captured = {}
 
-        def fake_run(command, check):
+        def fake_run(command, check=True, **kwargs):
             # Read the temp file's content here, before print_bin_file's
             # own cleanup removes it.
             with open(command[4], "rb") as temp_file:
@@ -274,7 +274,8 @@ class PrintJobStoreTests(unittest.TestCase):
 
         run_mock.assert_called_once()
         self.assertEqual(captured["bytes"], receipt)
-        self.assertEqual(captured["command"][:4], ["cmd", "/c", "copy", "/b"])
+        self.assertIn(captured["command"][0], ["cmd", "cmd.exe"])
+        self.assertEqual(captured["command"][1:4], ["/c", "copy", "/b"])
         self.assertEqual(captured["command"][5], "\\\\localhost\\Receipt Printer")
         self.assertFalse(os.path.exists(captured["temp_path"]))
 

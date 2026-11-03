@@ -28,7 +28,7 @@ class InvoicePrintOutboxTests(unittest.TestCase):
                 CREATE TABLE "User" (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE);
                 CREATE TABLE "Invoice" (
                     id TEXT PRIMARY KEY, invoiceNumber TEXT NOT NULL UNIQUE, totalAmount REAL NOT NULL,
-                    paymentMethod TEXT NOT NULL, clientName TEXT, clientPhone TEXT,
+                    paymentMethod TEXT NOT NULL, clientName TEXT, clientPhone TEXT, shopType TEXT DEFAULT 'FEMME',
                     isReservation INTEGER NOT NULL DEFAULT 0, reservationNo TEXT,
                     isDelivery INTEGER NOT NULL DEFAULT 0, deliveryNo TEXT, deliveryAddress TEXT,
                     deliveryStatus TEXT, deliveredAt TEXT, deliveryFee REAL DEFAULT 0,
@@ -37,7 +37,7 @@ class InvoicePrintOutboxTests(unittest.TestCase):
                     cancelledById TEXT
                 );
                 CREATE TABLE "InvoiceItem" (
-                    id TEXT PRIMARY KEY, invoiceId TEXT NOT NULL, categoryName TEXT NOT NULL, price REAL NOT NULL
+                    id TEXT PRIMARY KEY, invoiceId TEXT NOT NULL, categoryName TEXT NOT NULL, price REAL NOT NULL, qty INTEGER DEFAULT 1, itemType TEXT DEFAULT 'SERVICE'
                 );
                 CREATE TABLE "Client" (
                     id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, phone TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL

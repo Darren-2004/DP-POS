@@ -644,7 +644,7 @@ def create_app(store=None):
                     'SELECT id, name, color, shopType FROM "Category" WHERE id = ?', (category_id,)
                 ).fetchone()
                 subs = connection.execute(
-                    'SELECT id, name, categoryId FROM "SubCategory" WHERE categoryId = ? ORDER BY name ASC',
+                    'SELECT id, name, categoryId, COALESCE(price, 0) AS price FROM "SubCategory" WHERE categoryId = ? ORDER BY name ASC',
                     (category_id,),
                 ).fetchall()
         except sqlite3.IntegrityError as error:
@@ -679,15 +679,15 @@ def create_app(store=None):
                     (new_id, new_name, original["color"] or "bg-blue-500", original["shopType"] or "ALL"),
                 )
                 source_subs = connection.execute(
-                    'SELECT name FROM "SubCategory" WHERE categoryId = ? ORDER BY name ASC', (category_id,)
+                    'SELECT name, COALESCE(price, 0) AS price FROM "SubCategory" WHERE categoryId = ? ORDER BY name ASC', (category_id,)
                 ).fetchall()
                 for sub in source_subs:
                     connection.execute(
-                        'INSERT INTO "SubCategory" (id, name, categoryId) VALUES (?, ?, ?)',
-                        (str(uuid.uuid4()), sub["name"], new_id),
+                        'INSERT INTO "SubCategory" (id, name, categoryId, price) VALUES (?, ?, ?, ?)',
+                        (str(uuid.uuid4()), sub["name"], new_id, sub["price"]),
                     )
                 subs = connection.execute(
-                    'SELECT id, name, categoryId FROM "SubCategory" WHERE categoryId = ? ORDER BY name ASC',
+                    'SELECT id, name, categoryId, COALESCE(price, 0) AS price FROM "SubCategory" WHERE categoryId = ? ORDER BY name ASC',
                     (new_id,),
                 ).fetchall()
         except sqlite3.IntegrityError as error:
@@ -707,6 +707,7 @@ def create_app(store=None):
         category_ids = body.get("categoryIds")
         if not name or not isinstance(category_ids, list) or not category_ids:
             raise HTTPException(status_code=400, detail="Nom et identifiants de catégories requis")
+        price = float(body.get("price") or 0)
         created = []
         with get_store()._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -716,10 +717,10 @@ def create_app(store=None):
                 ).fetchone()
                 if exists:
                     continue
-                subcategory = {"id": str(uuid.uuid4()), "name": name, "categoryId": category_id}
+                subcategory = {"id": str(uuid.uuid4()), "name": name, "categoryId": category_id, "price": price}
                 connection.execute(
-                    'INSERT INTO "SubCategory" (id, name, categoryId) VALUES (?, ?, ?)',
-                    (subcategory["id"], name, category_id),
+                    'INSERT INTO "SubCategory" (id, name, categoryId, price) VALUES (?, ?, ?, ?)',
+                    (subcategory["id"], name, category_id, price),
                 )
                 created.append(subcategory)
         return {"message": f"{len(created)} sous-catégorie(s) créée(s)", "created": created}
@@ -731,12 +732,13 @@ def create_app(store=None):
         category_id = body.get("categoryId")
         if not name or not category_id:
             raise HTTPException(status_code=400, detail="Nom et catégorie parent requis")
-        subcategory = {"id": str(uuid.uuid4()), "name": name, "categoryId": category_id}
+        price = float(body.get("price") or 0)
+        subcategory = {"id": str(uuid.uuid4()), "name": name, "categoryId": category_id, "price": price}
         try:
             with get_store()._connect() as connection:
                 connection.execute(
-                    'INSERT INTO "SubCategory" (id, name, categoryId) VALUES (?, ?, ?)',
-                    (subcategory["id"], name, category_id),
+                    'INSERT INTO "SubCategory" (id, name, categoryId, price) VALUES (?, ?, ?, ?)',
+                    (subcategory["id"], name, category_id, price),
                 )
         except sqlite3.IntegrityError as error:
             raise HTTPException(status_code=400, detail="Une sous-catégorie avec ce nom existe déjà dans cette catégorie") from error
@@ -748,15 +750,16 @@ def create_app(store=None):
         name = str(body.get("name") or "").strip()
         if not name:
             raise HTTPException(status_code=400, detail="Nom requis")
+        price = float(body.get("price") or 0)
         try:
             with get_store()._connect() as connection:
                 cursor = connection.execute(
-                    'UPDATE "SubCategory" SET name = ? WHERE id = ?', (name, subcategory_id)
+                    'UPDATE "SubCategory" SET name = ?, price = ? WHERE id = ?', (name, price, subcategory_id)
                 )
                 if cursor.rowcount == 0:
                     raise HTTPException(status_code=500, detail="Erreur lors de la mise à jour de la sous-catégorie")
                 subcategory = connection.execute(
-                    'SELECT id, name, categoryId FROM "SubCategory" WHERE id = ?', (subcategory_id,)
+                    'SELECT id, name, categoryId, COALESCE(price, 0) AS price FROM "SubCategory" WHERE id = ?', (subcategory_id,)
                 ).fetchone()
         except sqlite3.IntegrityError as error:
             raise HTTPException(status_code=400, detail="Une sous-catégorie avec ce nom existe déjà dans cette catégorie") from error
@@ -803,6 +806,41 @@ def create_app(store=None):
     @app.get("/api/heartbeat")
     def heartbeat():
         return {"status": "ok"}
+
+    @app.get("/api/settings/shop-names")
+    def get_shop_names():
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            settings = connection.execute(
+                'SELECT shop1Name, shop2Name FROM "ShopSettings" WHERE id = 1'
+            ).fetchone()
+        return {
+            "HOMME": settings["shop1Name"] if settings else "Shop 1",
+            "FEMME": settings["shop2Name"] if settings else "Shop 2",
+        }
+
+    @app.put("/api/settings/shop-names")
+    async def update_shop_names(request: Request):
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+        require_admin(request)
+        body = await request.json()
+        shop1_name = str(body.get("HOMME") or "").strip()
+        shop2_name = str(body.get("FEMME") or "").strip()
+        if not shop1_name or not shop2_name:
+            raise HTTPException(status_code=400, detail="Le nom des deux shops est requis")
+        if len(shop1_name) > 80 or len(shop2_name) > 80:
+            raise HTTPException(status_code=400, detail="Le nom d'un shop ne peut pas dépasser 80 caractères")
+        with get_store()._connect() as connection:
+            connection.execute(
+                '''INSERT INTO "ShopSettings" (id, shop1Name, shop2Name)
+                   VALUES (1, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       shop1Name = excluded.shop1Name,
+                       shop2Name = excluded.shop2Name''',
+                (shop1_name, shop2_name),
+            )
+        return {"HOMME": shop1_name, "FEMME": shop2_name}
 
     @app.get("/api/debug")
     def debug():

@@ -69,6 +69,82 @@ export const showToast = (message, type = 'success') => {
   }
 };
 
+// ─── Shared Beauty Receipt Templates ─────────────────────────────────────────
+export const getBeautyReceiptStyles = () => `
+  @page { margin: 0; size: auto; }
+  * { box-sizing: border-box; }
+  html, body {
+    width: 72mm;
+    margin: 0 auto;
+    padding: 3mm 2mm;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 8.5pt;
+    line-height: 1.25;
+    color: #1a120c;
+    background: #fff;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+`;
+
+export const renderBeautyHeader = (title, subtitle = 'SALON DE BEAUTÉ & SOINS') => `
+  <div style="text-align:center;margin-bottom:6px;">
+    <div style="font-size:7.5pt;letter-spacing:3px;color:#b38059;font-weight:700;margin-bottom:1px;">✦ &nbsp; • &nbsp; ✧ &nbsp; • &nbsp; ✦</div>
+    <h1 style="margin:0;font-size:14pt;font-weight:900;letter-spacing:2px;color:#1a120c;text-transform:uppercase;line-height:1.15;">DIMITRI PERFECT</h1>
+    <div style="font-size:7.5pt;font-weight:700;letter-spacing:1.5px;color:#7c6858;text-transform:uppercase;margin:2px 0 1px 0;">${subtitle}</div>
+    <div style="font-size:7pt;color:#8a786a;font-weight:500;">NIU : P079216781512Z</div>
+    <div style="margin:5px auto 3px auto;display:inline-block;padding:2px 10px;border:1.2px solid #2c1e14;border-radius:12px;font-size:7.5pt;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;background:#faf7f4;color:#1a120c;">
+      ${title}
+    </div>
+  </div>
+`;
+
+export const renderBeautyItemsList = (items = []) => {
+  const map = {};
+  items.forEach(item => {
+    const key = `${item.categoryName}||${item.price}`;
+    if (!map[key]) map[key] = { categoryName: item.categoryName, price: item.price, qty: 0 };
+    map[key].qty += (item.qty || 1);
+  });
+  const grouped = Object.values(map);
+
+  return `
+    <div style="margin:6px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #2c1e14;padding-bottom:3px;margin-bottom:4px;font-size:7.5pt;font-weight:800;letter-spacing:0.8px;color:#2c1e14;text-transform:uppercase;">
+        <span>PRESTATIONS &amp; ARTICLES</span>
+        <span>TOTAL</span>
+      </div>
+      ${grouped.map(item => `
+        <div style="border-bottom:1px dashed #e2dbd4;padding:4px 0;page-break-inside:avoid;">
+          <div style="font-size:8.5pt;font-weight:600;color:#1a120c;line-height:1.25;word-break:break-word;overflow-wrap:break-word;">
+            ${item.categoryName}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;font-size:8pt;color:#666;">
+            <span style="letter-spacing:0.2px;">
+              ${item.qty} × ${Math.round(item.price).toLocaleString('fr-FR')} FCFA
+            </span>
+            <span style="font-weight:700;color:#000;font-size:8.5pt;">
+              ${Math.round(item.price * item.qty).toLocaleString('fr-FR')} FCFA
+            </span>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+};
+
+export const renderBeautyFooter = (extraNote = '') => `
+  <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #d5cdc5;page-break-inside:avoid;">
+    ${extraNote ? `<div style="font-size:7.5pt;font-weight:600;color:#5a4232;margin-bottom:4px;line-height:1.3;">${extraNote}</div>` : ''}
+    <div style="font-size:8pt;font-weight:700;color:#1a120c;margin-bottom:2px;">✦ Merci de votre visite &amp; à très bientôt ! ✦</div>
+    <div style="font-size:7.5pt;color:#7c6858;font-style:italic;margin-bottom:3px;">Révélez votre beauté chez Dimitri Perfect ✨</div>
+    <div style="font-size:6.8pt;color:#8a786a;margin-bottom:4px;line-height:1.25;">Les prestations et articles vendus ne sont ni remboursables ni échangeables.</div>
+    <div style="font-size:6.5pt;color:#999;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Dimitri Perfect POS • Par TriSpark Digital</div>
+  </div>
+`;
+
 export const renderPaymentMethodHTML = (method) => {
   const methodStr = String(method || '').trim();
   if (methodStr.startsWith('MULTIPLE:')) {
@@ -82,13 +158,13 @@ export const renderPaymentMethodHTML = (method) => {
       else if (k === 'ONLINE') label = 'Mobile Money';
       else if (k === 'ORANGE_MONEY') label = 'Orange Money';
       else label = k;
-      return `<div style="display:flex;justify-content:space-between;gap:4px;padding-left:8px;font-size:10pt;font-weight:bold;color:#000;margin:2px 0;">
+      return `<div style="display:flex;justify-content:space-between;padding:1px 0;font-size:8pt;color:#333;">
         <span>• ${label} :</span>
-        <span>${new Intl.NumberFormat('fr-FR').format(v)} FCFA</span>
+        <span style="font-weight:700;color:#000;">${new Intl.NumberFormat('fr-FR').format(v)} FCFA</span>
       </div>`;
     });
-    return `<div style="margin:4px 0;padding:3px 0;border-top:1px solid #000;border-bottom:1px solid #000;color:#000;">
-      <div style="font-size:10pt;font-weight:900;margin-bottom:2px;">RÈGLEMENT :</div>
+    return `<div style="margin:4px 0;padding:4px 0;border-top:1px dashed #d5cdc5;border-bottom:1px dashed #d5cdc5;">
+      <div style="font-size:7.5pt;font-weight:800;letter-spacing:0.5px;color:#5a4232;margin-bottom:2px;text-transform:uppercase;">Règlement Mixte :</div>
       ${lines.join('')}
     </div>`;
   }
@@ -98,9 +174,9 @@ export const renderPaymentMethodHTML = (method) => {
   if (methodStr === 'CASH') label = 'Espèces';
   else if (methodStr === 'ONLINE') label = 'Mobile Money';
   else if (methodStr === 'ORANGE_MONEY') label = 'Orange Money';
-  return `<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;margin:4px 0;padding:3px 0;border-top:1px solid #000;border-bottom:1px solid #000;font-size:10pt;font-weight:900;color:#000;">
-    <span>RÈGLEMENT :</span>
-    <span>${label}</span>
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 0;font-size:8pt;">
+    <span style="color:#666;">Règlement :</span>
+    <span style="font-weight:700;color:#1a120c;background:#f3ece4;padding:1px 6px;border-radius:4px;">${label}</span>
   </div>`;
 };
 
@@ -281,44 +357,6 @@ export const triggerPrint = (invoiceData) => {
 
   const isZ = invoiceData.isZReport;
 
-  const groupItems = (items = []) => {
-    const map = {};
-    items.forEach(item => {
-      const key = `${item.categoryName}||${item.price}`;
-      if (!map[key]) map[key] = { categoryName: item.categoryName, price: item.price, qty: 0 };
-      map[key].qty += 1;
-    });
-    return Object.values(map);
-  };
-
-  const itemsRows = `
-    <div style="width:100%; margin:4px 0; font-size:8.5pt;">
-      <!-- Header -->
-      <div style="display:flex; justify-content:space-between; font-weight:bold; border-bottom:1.5px solid #000; padding-bottom:2px;">
-        <span style="flex:1; text-align:left;">Désignation</span>
-        <span style="width:180px; display:flex; justify-content:space-between;">
-          <span style="width:40px; text-align:center;">Qté</span>
-          <span style="width:10px; text-align:center;"></span>
-          <span style="width:60px; text-align:right;">P/U</span>
-          <span style="width:10px; text-align:center;"></span>
-          <span style="width:60px; text-align:right;">Total</span>
-        </span>
-      </div>
-      <!-- Items -->
-      ${groupItems(invoiceData.items || []).map(item => `
-        <div style="display:flex; justify-content:space-between; border-bottom:0.5px solid #eee; padding:3px 0; align-items:flex-start;">
-          <span style="flex:1; text-align:left; word-break:break-word; overflow-wrap:break-word; padding-right:4px;">${item.categoryName}</span>
-          <span style="width:180px; display:flex; justify-content:space-between; flex-wrap:wrap; align-items:flex-start;">
-            <span style="width:40px; text-align:center;">${item.qty}</span>
-            <span style="width:10px; text-align:center;">|</span>
-            <span style="width:60px; text-align:right;">${Math.round(item.price).toLocaleString('fr-FR')}</span>
-            <span style="width:10px; text-align:center;">|</span>
-            <span style="width:60px; text-align:right; font-weight:bold; word-break:break-all;">${Math.round(item.price * item.qty).toLocaleString('fr-FR')}</span>
-          </span>
-        </div>
-      `).join('')}
-    </div>`;
-
   const clientNameStr = invoiceData.clientName || '';
   let clientPhoneStr = invoiceData.clientPhone || '';
 
@@ -344,125 +382,142 @@ export const triggerPrint = (invoiceData) => {
   else if (invoiceData.deliveryStatus === 'CANCELLED') deliveryStatusLabel = 'ANNULÉE';
 
   const printHTML = isZ ? `
-    <div style="text-align:center;margin-bottom:8px;">
-      <h2 style="margin:0;font-size:16pt;letter-spacing:2px;">DIMITRI PERFECT</h2>
-      <h3 style="margin:2px 0;font-size:11pt;">RAPPORT DE CLÔTURE (Z)</h3>
-      <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
+    ${renderBeautyHeader('RAPPORT DE CLÔTURE (Z)', 'SYNTHÈSE DE CAISSE')}
+    <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span style="color:#666;">Date &amp; Heure :</span>
+        <span style="font-weight:600;color:#1a120c;">${invoiceData.zReport.date} ${invoiceData.zReport.time}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span style="color:#666;">Opérateur :</span>
+        <span style="font-weight:600;color:#1a120c;">${invoiceData.zReport.cashierName || invoiceData.createdBy?.name || 'Admin'}</span>
+      </div>
     </div>
-    <div style="font-size:9pt;">
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Date:</span><span style="white-space:nowrap;">${invoiceData.zReport.date} ${invoiceData.zReport.time}</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Opérateur:</span><span style="word-break:break-word;">${invoiceData.zReport.cashierName || invoiceData.createdBy?.name || 'Admin'}</span></div>
-      <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
-      <div style="font-weight:bold;font-size:10pt;margin-bottom:4px;">SYNTHÈSE COMPTABLE</div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;font-size:11pt;font-weight:bold;margin:4px 0;"><span>TOTAL NET:</span><span>${Math.round(invoiceData.zReport.totalSales).toLocaleString('fr-FR')} FCFA</span></div>
-      <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Espèces:</span><span>${Math.round(invoiceData.zReport.totalCash || invoiceData.zReport.payments?.CASH || 0).toLocaleString('fr-FR')} FCFA</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Mobile Money:</span><span>${Math.round(invoiceData.zReport.totalOnline || invoiceData.zReport.payments?.ONLINE || 0).toLocaleString('fr-FR')} FCFA</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Orange Money:</span><span>${Math.round(invoiceData.zReport.payments?.ORANGE_MONEY || 0).toLocaleString('fr-FR')} FCFA</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Ventes Validées:</span><span>${invoiceData.zReport.validatedCount}</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Ventes Annulées:</span><span>${invoiceData.zReport.cancelledCount}</span></div>
-      <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
-      <div style="font-weight:bold;font-size:10pt;margin-bottom:4px;">RÉPARTITION PAR CATÉGORIE</div>
-      ${(invoiceData.zReport.topSelling || []).map(cat => `
-        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;word-break:break-word;">
-          <span style="flex:1;min-width:0;word-break:break-word;">${cat.name} (x${cat.quantity})</span>
-          <span style="word-break:break-all;margin-left:4px;">${Math.round(cat.revenue).toLocaleString('fr-FR')} FCFA</span>
-        </div>`).join('')}
-      <p style="text-align:center;margin-top:16px;font-size:9pt;font-weight:bold;">--- FIN DU RAPPORT Z ---</p>
+
+    <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin:6px 0;background:#fff;">
+      <div style="font-size:7.5pt;font-weight:800;letter-spacing:1px;color:#7c6858;text-transform:uppercase;margin-bottom:4px;">SYNTHÈSE COMPTABLE</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11pt;font-weight:800;color:#1a120c;margin:4px 0;">
+        <span>TOTAL NET :</span>
+        <span style="font-size:12pt;">${Math.round(invoiceData.zReport.totalSales).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+        <span>Espèces :</span>
+        <span style="font-weight:700;">${Math.round(invoiceData.zReport.totalCash || invoiceData.zReport.payments?.CASH || 0).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+        <span>Mobile Money :</span>
+        <span style="font-weight:700;">${Math.round(invoiceData.zReport.totalOnline || invoiceData.zReport.payments?.ONLINE || 0).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+        <span>Orange Money :</span>
+        <span style="font-weight:700;">${Math.round(invoiceData.zReport.payments?.ORANGE_MONEY || 0).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+        <span>Ventes Validées :</span>
+        <span style="font-weight:700;">${invoiceData.zReport.validatedCount}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#444;">
+        <span>Ventes Annulées :</span>
+        <span style="font-weight:700;color:#c93b3b;">${invoiceData.zReport.cancelledCount}</span>
+      </div>
+    </div>
+
+    ${(invoiceData.zReport.topSelling && invoiceData.zReport.topSelling.length > 0) ? `
+      <div style="margin:6px 0;">
+        <div style="border-bottom:1.5px solid #2c1e14;padding-bottom:3px;margin-bottom:4px;font-size:7.5pt;font-weight:800;letter-spacing:0.8px;color:#2c1e14;text-transform:uppercase;">
+          RÉPARTITION PAR CATÉGORIE
+        </div>
+        ${invoiceData.zReport.topSelling.map(cat => `
+          <div style="display:flex;justify-content:space-between;font-size:8pt;border-bottom:1px dashed #e2dbd4;padding:3px 0;">
+            <span style="color:#1a120c;">${cat.name} (x${cat.quantity})</span>
+            <span style="font-weight:700;color:#000;">${Math.round(cat.revenue).toLocaleString('fr-FR')} FCFA</span>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    <div style="text-align:center;margin-top:10px;font-size:7.5pt;font-weight:800;color:#7c6858;letter-spacing:1px;border-top:1px dashed #d5cdc5;padding-top:6px;">
+      --- FIN DU RAPPORT DE CLÔTURE Z ---
     </div>
   ` : `
-    <div style="text-align:center;margin-bottom:2px;">
-      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">DIMITRI PERFECT</h2>
-      <p style="margin:2px 0;font-size:9pt;letter-spacing:1px;font-weight:bold;">${isDelivery ? '─── BON DE LIVRAISON ───' : (isReservation ? '─── FACTURE DE RÉSERVATION ───' : '─── TICKET DE CAISSE ───')}</p>
-      <p style="margin:2px 0;font-size:8.5pt;font-weight:bold;">NIU: P079216781512Z</p>
-    </div>
-    <p style="margin:3px 0;border-bottom:1.5px dashed #000;"></p>
-    <div style="font-size:9pt;">
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;">
-        <span>N° ${isDelivery ? 'Livraison' : (isReservation ? 'Facture Résa' : 'Ticket')}:</span>
-        <span style="font-weight:bold;word-break:break-all;">${isDelivery && invoiceData.deliveryNo ? invoiceData.deliveryNo : invoiceData.invoiceNumber}</span>
+    ${renderBeautyHeader(isDelivery ? 'BON DE LIVRAISON' : (isReservation ? 'FACTURE DE RÉSERVATION' : 'TICKET DE CAISSE'))}
+    <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">N° ${isDelivery ? 'Livraison' : (isReservation ? 'Facture' : 'Ticket')} :</span>
+        <span style="font-weight:800;color:#1a120c;font-family:monospace;">${isDelivery && invoiceData.deliveryNo ? invoiceData.deliveryNo : invoiceData.invoiceNumber}</span>
       </div>
       ${isDelivery ? `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;">
-        <span>Statut Livraison:</span>
-        <span style="font-weight:bold;border:1px solid #000;padding:0 3px;">${deliveryStatusLabel}</span>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Statut :</span>
+        <span style="font-weight:700;color:#1a120c;border:1px solid #1a120c;padding:0 4px;border-radius:3px;font-size:7.5pt;">${deliveryStatusLabel}</span>
       </div>` : ''}
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;"><span>Date:</span><span style="white-space:nowrap;">${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;"><span>Caissière:</span><span style="word-break:break-word;">${invoiceData.createdBy?.name || 'Caissière'}</span></div>
-      ${renderPaymentMethodHTML(invoiceData.paymentMethod)}
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Date :</span>
+        <span style="color:#1a120c;font-weight:600;">${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Caissière :</span>
+        <span style="color:#1a120c;font-weight:600;">${invoiceData.createdBy?.name || 'Caissière'}</span>
+      </div>
       ${hasName ? `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;">
-        <span>Nom client:</span>
-        <span style="font-weight:bold;word-break:break-word;text-align:right;flex:1;min-width:0;">${clientNameStr}</span>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Client :</span>
+        <span style="font-weight:700;color:#1a120c;text-align:right;">${clientNameStr}</span>
       </div>` : ''}
       ${hasPhone ? `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;">
-        <span>Tél client:</span>
-        <span style="font-weight:bold;word-break:break-all;text-align:right;">${clientPhoneStr}</span>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Téléphone :</span>
+        <span style="font-weight:700;color:#1a120c;text-align:right;">${clientPhoneStr}</span>
       </div>` : ''}
       ${isDelivery && invoiceData.deliveryAddress ? `
-      <div style="margin:4px 0;padding:3px;border:1px dashed #000;font-size:8.5pt;">
-        <span>Adresse livraison:</span>
-        <div style="font-weight:bold;word-break:break-word;margin-top:1px;">${invoiceData.deliveryAddress}</div>
+      <div style="margin-top:3px;padding-top:3px;border-top:1px dashed #d5cdc5;">
+        <span style="color:#666;font-size:7.5pt;">Adresse livraison :</span>
+        <div style="font-weight:700;color:#1a120c;">${invoiceData.deliveryAddress}</div>
       </div>` : ''}
       ${isDelivery && invoiceData.deliveryPerson ? `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;">
-        <span>Livreur:</span>
-        <span style="font-weight:bold;word-break:break-word;text-align:right;">${invoiceData.deliveryPerson}</span>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Livreur :</span>
+        <span style="font-weight:700;color:#1a120c;">${invoiceData.deliveryPerson}</span>
       </div>` : ''}
+      ${renderPaymentMethodHTML(invoiceData.paymentMethod)}
     </div>
-    <p style="margin:5px 0;border-bottom:1.5px dashed #000;"></p>
-    ${itemsRows}
-    <p style="margin:5px 0;border-top:2px solid #000;border-bottom:2px solid #000;"></p>
-    ${(isDelivery && Number(invoiceData.deliveryFee || 0) > 0) ? `
-      <div style="font-size:9.5pt;font-weight:bold;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:3px;">
-        <span>Sous-total articles:</span><span>${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-      <div style="font-size:9.5pt;font-weight:bold;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:2px;">
-        <span>Frais de transport:</span><span>${Math.round(invoiceData.deliveryFee).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-      <p style="margin:4px 0;border-top:1px dashed #000;"></p>
-      <div style="font-size:11pt;font-weight:bold;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:3px;">
-        <span>TOTAL À PAYER:</span><span style="word-break:break-all;">${Math.round(Number(invoiceData.totalAmount) + Number(invoiceData.deliveryFee)).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-    ` : `
-      <div style="font-size:11pt;font-weight:bold;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:5px;">
-        <span>TOTAL À PAYER:</span><span style="word-break:break-all;">${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-    `}
-    <p style="text-align:center;margin-top:10px;font-size:8.5pt;font-weight:bold;border-top:1px dashed #000;padding-top:6px;margin-bottom:4px;">
-      Un article vendu n'est ni remboursable ni changeable
-    </p>
-    <p style="text-align:center;margin-top:6px;font-size:9pt;font-weight:bold;">Merci de votre visite !</p>
-    <div style="text-align:center;margin-top:8px;font-size:7.5pt;color:#000;font-weight:bold;">Fait par © TriSpark Digital1</div>
+
+    ${renderBeautyItemsList(invoiceData.items || [])}
+
+    <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin-top:6px;background:#fff;">
+      ${(isDelivery && Number(invoiceData.deliveryFee || 0) > 0) ? `
+        <div style="display:flex;justify-content:space-between;font-size:8.5pt;margin-bottom:2px;color:#666;">
+          <span>Sous-total prestations/articles :</span>
+          <span>${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:8.5pt;margin-bottom:3px;color:#666;">
+          <span>Frais de livraison :</span>
+          <span>${Math.round(invoiceData.deliveryFee).toLocaleString('fr-FR')} FCFA</span>
+        </div>
+        <div style="border-top:1px dashed #d5cdc5;margin:3px 0;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10.5pt;font-weight:800;color:#1a120c;">
+          <span>TOTAL À PAYER :</span>
+          <span style="font-size:12pt;">${Math.round(Number(invoiceData.totalAmount) + Number(invoiceData.deliveryFee)).toLocaleString('fr-FR')} FCFA</span>
+        </div>
+      ` : `
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10.5pt;font-weight:800;color:#1a120c;">
+          <span>TOTAL À PAYER :</span>
+          <span style="font-size:12pt;">${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
+        </div>
+      `}
+    </div>
+
+    ${renderBeautyFooter()}
   `;
 
   const fullHtml = `<!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Ticket POS</title>
-        <style>
-          @page { margin: 0; size: auto; }
-          * { box-sizing: border-box; }
-          html, body {
-            width: 70mm;
-            margin: 0 auto;
-            padding: 0;
-            font-family: 'Consolas', 'Lucida Console', 'Courier New', monospace;
-            font-size: 8.5pt;
-            letter-spacing: -0.2px;
-            line-height: 1.2;
-            color: #000;
-            background: #fff;
-            word-break: break-word;
-            overflow-wrap: break-word;
-            -webkit-print-color-adjust: exact;
-          }
-          table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 8.5pt; table-layout: fixed; }
-          th { padding: 2px 1px; font-weight: bold; border-bottom: 2px solid #000; word-break: break-word; }
-          td { padding: 2px 1px; word-break: break-word; }
-        </style>
+        <title>Ticket Dimitri Perfect</title>
+        <style>${getBeautyReceiptStyles()}</style>
       </head>
       <body>${printHTML}</body>
     </html>`;
@@ -487,125 +542,84 @@ export const triggerProformaPrint = (reservation) => {
   const paymentsList = payments.map((p, idx) => {
     const isLast = idx === payments.length - 1;
     return `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;${isLast ? 'font-weight:bold;font-size:9.5pt;' : ''}">
-        <span>Tranche ${p.installmentNumber || idx + 1}/3 (${getPaymentMethodLabel(p.paymentMethod)})${isLast ? ' (Ce jour)' : ''}:</span>
-        <span style="word-break:break-all;font-weight:bold;">${Math.round(p.amount).toLocaleString('fr-FR')} FCFA</span>
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:8pt;${isLast ? 'font-weight:700;color:#1a120c;' : 'color:#555;'}">
+        <span>Tranche ${p.installmentNumber || idx + 1}/3 (${getPaymentMethodLabel(p.paymentMethod)})${isLast ? ' [Ce jour]' : ''} :</span>
+        <span style="font-weight:700;">${Math.round(p.amount).toLocaleString('fr-FR')} FCFA</span>
       </div>
     `;
   }).join('');
-
-  const itemsList = (reservation.items || []).map(item => `
-    <div style="display:flex; justify-content:space-between; border-bottom:0.5px solid #eee; padding:3px 0; align-items:flex-start;">
-      <span style="flex:1; text-align:left; word-break:break-word; overflow-wrap:break-word; padding-right:4px;">${item.categoryName}</span>
-      <span style="width:180px; display:flex; justify-content:space-between; flex-wrap:wrap; align-items:flex-start;">
-        <span style="width:40px; text-align:center;">${item.qty || 1}</span>
-        <span style="width:10px; text-align:center;">|</span>
-        <span style="width:60px; text-align:right;">${Math.round(item.price).toLocaleString('fr-FR')}</span>
-        <span style="width:10px; text-align:center;">|</span>
-        <span style="width:60px; text-align:right; font-weight:bold; word-break:break-all;">${Math.round(item.price * (item.qty || 1)).toLocaleString('fr-FR')}</span>
-      </span>
-    </div>
-  `).join('');
 
   const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const remaining = Math.max(0, (Number(reservation.totalAmount) || 0) - totalPaid);
 
   const printHTML = `
-    <div style="text-align:center;margin-bottom:2px;">
-      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">DIMITRI PERFECT</h2>
-      <p style="margin:2px 0;font-size:9pt;letter-spacing:1px;font-weight:bold;">─── REÇU PROFORMA (RÉSERVATION) ───</p>
-      <p style="margin:2px 0;font-size:8.5pt;font-weight:bold;">NIU: P079216781512Z</p>
-    </div>
-    <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
-    <div style="font-size:9pt;">
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>N° Réservation:</span><span style="font-weight:bold;word-break:break-all;">${reservation.reservationNo}</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Date:</span><span style="white-space:nowrap;">${new Date(reservation.createdAt).toLocaleString('fr-FR')}</span></div>
+    ${renderBeautyHeader('REÇU PROFORMA (RÉSERVATION)')}
+    <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">N° Réservation :</span>
+        <span style="font-weight:800;color:#1a120c;font-family:monospace;">${reservation.reservationNo}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Date :</span>
+        <span style="color:#1a120c;font-weight:600;">${new Date(reservation.createdAt).toLocaleString('fr-FR')}</span>
+      </div>
       ${reservation.clientName ? `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;">
-        <span>Nom client:</span>
-        <span style="font-weight:bold;word-break:break-word;text-align:right;flex:1;min-width:0;">${reservation.clientName}</span>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Client :</span>
+        <span style="font-weight:700;color:#1a120c;text-align:right;">${reservation.clientName}</span>
       </div>` : ''}
       ${reservation.clientPhone ? `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;">
-        <span>Tél client:</span>
-        <span style="font-weight:bold;word-break:break-all;text-align:right;">${reservation.clientPhone}</span>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Téléphone :</span>
+        <span style="font-weight:700;color:#1a120c;text-align:right;">${reservation.clientPhone}</span>
       </div>` : ''}
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Enregistré par:</span><span style="word-break:break-word;">${reservation.createdBy?.name || 'Caissière'}</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;"><span>Statut:</span><b>${reservation.status === 'COMPLETED' ? 'PAYÉE À 100%' : 'EN COURS DE PAIEMENT'}</b></div>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Enregistré par :</span>
+        <span style="color:#1a120c;font-weight:600;">${reservation.createdBy?.name || 'Caissière'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Statut :</span>
+        <span style="font-weight:700;color:#1a120c;">${reservation.status === 'COMPLETED' ? 'PAYÉE À 100%' : 'EN COURS DE PAIEMENT'}</span>
+      </div>
     </div>
-    <p style="margin:6px 0;border-bottom:1.5px dashed #000;"></p>
-    <div style="width:100%; margin:4px 0; font-size:8.5pt;">
-      <!-- Header -->
-      <div style="display:flex; justify-content:space-between; font-weight:bold; border-bottom:1.5px solid #000; padding-bottom:2px;">
-        <span style="flex:1; text-align:left;">Désignation</span>
-        <span style="width:180px; display:flex; justify-content:space-between;">
-          <span style="width:40px; text-align:center;">Qté</span>
-          <span style="width:10px; text-align:center;"></span>
-          <span style="width:60px; text-align:right;">P/U</span>
-          <span style="width:10px; text-align:center;"></span>
-          <span style="width:60px; text-align:right;">Total</span>
-        </span>
+
+    ${renderBeautyItemsList(reservation.items || [])}
+
+    <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin-top:6px;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10pt;font-weight:800;color:#1a120c;">
+        <span>MONTANT TOTAL :</span>
+        <span style="font-size:11.5pt;">${Math.round(reservation.totalAmount).toLocaleString('fr-FR')} FCFA</span>
       </div>
-      ${itemsList}
-    </div>
-    <p style="margin:6px 0;border-top:2px solid #000;border-bottom:2px solid #000;"></p>
-    <div style="font-size:9pt;">
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;font-weight:bold;font-size:10pt;">
-        <span>MONTANT TOTAL:</span><span style="word-break:break-all;">${Math.round(reservation.totalAmount).toLocaleString('fr-FR')} FCFA</span>
+      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+      <div style="font-size:7.5pt;font-weight:800;color:#7c6858;letter-spacing:0.8px;text-transform:uppercase;margin:3px 0 2px 0;">
+        HISTORIQUE DES VERSEMENTS (${reservation.payments?.length || 0}/3)
       </div>
-      <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
-      <div style="font-weight:bold;margin:4px 0 2px 0;">HISTORIQUE DES VERSEMENTS (${reservation.payments?.length || 0}/3):</div>
-      ${paymentsList || '<div style="font-style:italic;">Aucun versement effectué</div>'}
-      <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;font-size:8.5pt;">
-        <span>TOTAL DÉJÀ PAYÉ:</span><span style="word-break:break-all;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
+      ${paymentsList || '<div style="font-style:italic;font-size:7.5pt;color:#888;">Aucun versement effectué</div>'}
+      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;color:#666;">
+        <span>Total déjà payé :</span>
+        <span style="font-weight:700;color:#1a120c;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
       </div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;font-size:9pt;margin-top:2px;font-weight:bold;">
-        <span>RESTE À PAYER:</span><span style="word-break:break-all;">${Math.round(remaining).toLocaleString('fr-FR')} FCFA</span>
+      <div style="display:flex;justify-content:space-between;font-size:8.5pt;font-weight:800;color:#1a120c;margin-top:2px;">
+        <span>RESTE À PAYER :</span>
+        <span>${Math.round(remaining).toLocaleString('fr-FR')} FCFA</span>
       </div>
       ${lastPayment ? `
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;font-weight:900;font-size:13pt;margin:8px 0 4px 0;border:2px solid #000;padding:6px;background:#f9f9f9;">
-        <span>MONTANT PAYÉ CE JOUR:</span>
-        <span style="word-break:break-all;font-size:13pt;">${Math.round(lastPaymentAmount).toLocaleString('fr-FR')} FCFA</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;padding:4px 6px;background:#fbf9f6;border:1px solid #2c1e14;border-radius:4px;font-weight:800;font-size:9pt;color:#1a120c;">
+        <span>MONTANT PAYÉ CE JOUR :</span>
+        <span style="font-size:10.5pt;">${Math.round(lastPaymentAmount).toLocaleString('fr-FR')} FCFA</span>
       </div>` : ''}
     </div>
-    <p style="text-align:center;margin-top:10px;font-size:8.5pt;font-weight:bold;border-top:1px dashed #000;padding-top:6px;margin-bottom:4px;">
-      Un article vendu n'est ni remboursable ni changeable
-    </p>
-    <p style="text-align:center;margin-top:6px;font-size:8.5pt;font-weight:bold;">
-      Document Proforma de Réservation.<br>
-      La facture définitive est remise après solde complet.<br>
-      Merci pour votre confiance - DIMITRI PERFECT
-    </p>
-    <div style="text-align:center;margin-top:8px;font-size:7.5pt;color:#000;font-weight:bold;">Fait par © TriSpark Digital1</div>
+
+    ${renderBeautyFooter('Document Proforma de Réservation.<br>La facture définitive est remise après solde complet.')}
   `;
 
   const fullHtml = `<!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Réservation POS</title>
-        <style>
-          @page { margin: 0; size: auto; }
-          * { box-sizing: border-box; }
-          html, body {
-            width: 70mm;
-            margin: 0 auto;
-            padding: 0;
-            font-family: 'Consolas', 'Lucida Console', 'Courier New', monospace;
-            font-size: 8.5pt;
-            letter-spacing: -0.2px;
-            line-height: 1.2;
-            color: #000;
-            background: #fff;
-            word-break: break-word;
-            overflow-wrap: break-word;
-            -webkit-print-color-adjust: exact;
-          }
-          table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 8.5pt; table-layout: fixed; }
-          th { padding: 2px 1px; font-weight: bold; border-bottom: 2px solid #000; word-break: break-word; }
-          td { padding: 2px 1px; word-break: break-word; }
-        </style>
+        <title>Réservation Dimitri Perfect</title>
+        <style>${getBeautyReceiptStyles()}</style>
       </head>
       <body>${printHTML}</body>
     </html>`;
@@ -627,130 +641,83 @@ export const triggerFinalReservationPrint = (invoiceData) => {
   const lastPaymentAmount = lastPayment ? (Number(lastPayment.amount) || 0) : 0;
   const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-  const groupItems = (items = []) => {
-    const map = {};
-    items.forEach(item => {
-      const key = `${item.categoryName}||${item.price}`;
-      if (!map[key]) map[key] = { categoryName: item.categoryName, price: item.price, qty: 0 };
-      map[key].qty += 1;
-    });
-    return Object.values(map);
-  };
-
-  const itemsRows = `
-    <div style="width:100%; margin:4px 0; font-size:8.5pt;">
-      <div style="display:flex; justify-content:space-between; font-weight:bold; border-bottom:1.5px solid #000; padding-bottom:2px;">
-        <span style="flex:1; text-align:left;">Désignation</span>
-        <span style="width:180px; display:flex; justify-content:space-between;">
-          <span style="width:40px; text-align:center;">Qté</span>
-          <span style="width:10px; text-align:center;"></span>
-          <span style="width:60px; text-align:right;">P/U</span>
-          <span style="width:10px; text-align:center;"></span>
-          <span style="width:60px; text-align:right;">Total</span>
-        </span>
-      </div>
-      ${groupItems(invoiceData.items || []).map(item => `
-      <div style="display:flex; justify-content:space-between; border-bottom:0.5px solid #eee; padding:3px 0; align-items:flex-start;">
-        <span style="flex:1; text-align:left; word-break:break-word; overflow-wrap:break-word; padding-right:4px;">${item.categoryName}</span>
-        <span style="width:180px; display:flex; justify-content:space-between; flex-wrap:wrap; align-items:flex-start;">
-          <span style="width:40px; text-align:center;">${item.qty}</span>
-          <span style="width:10px; text-align:center;">|</span>
-          <span style="width:60px; text-align:right;">${Math.round(item.price).toLocaleString('fr-FR')}</span>
-          <span style="width:10px; text-align:center;">|</span>
-          <span style="width:60px; text-align:right; font-weight:bold; word-break:break-all;">${Math.round(item.price * item.qty).toLocaleString('fr-FR')}</span>
-        </span>
-      </div>
-      `).join('')}
-    </div>`;
-
   const isFullyPaid = totalPaid >= (Number(invoiceData.totalAmount) || 0) - 0.01;
   const paymentsRows = payments.map((p, idx) => {
     const isLast = idx === payments.length - 1;
     const paymentLabel = isFullyPaid && isLast
-      ? `Paiement final — Réservation entièrement payée (${getPaymentMethodLabel(p.paymentMethod)})`
-      : `Tranche ${p.installmentNumber || idx + 1}/3 (${getPaymentMethodLabel(p.paymentMethod)})${isLast ? ' (Ce jour)' : ''}`;
+      ? `Paiement final — Solde complet (${getPaymentMethodLabel(p.paymentMethod)})`
+      : `Tranche ${p.installmentNumber || idx + 1}/3 (${getPaymentMethodLabel(p.paymentMethod)})${isLast ? ' [Ce jour]' : ''}`;
     return `
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:3px 0;font-size:8.5pt;${isLast ? 'font-weight:bold;' : ''}">
-        <span>${paymentLabel}:</span>
-        <span style="font-weight:bold;word-break:break-all;">${Math.round(p.amount).toLocaleString('fr-FR')} FCFA</span>
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:8pt;${isLast ? 'font-weight:700;color:#1a120c;' : 'color:#555;'}">
+        <span>${paymentLabel} :</span>
+        <span style="font-weight:700;">${Math.round(p.amount).toLocaleString('fr-FR')} FCFA</span>
       </div>
     `;
   }).join('');
 
   const printHTML = `
-    <div style="text-align:center;margin-bottom:2px;">
-      <h2 style="margin:0;font-size:16pt;font-weight:bold;letter-spacing:2px;">DIMITRI PERFECT</h2>
-      <p style="margin:2px 0;font-size:9pt;letter-spacing:1px;font-weight:bold;">─── FACTURE DÉFINITIVE ───</p>
-      <p style="margin:2px 0;font-size:8.5pt;font-weight:bold;">NIU: P079216781512Z</p>
+    ${renderBeautyHeader('FACTURE DÉFINITIVE')}
+    <div style="background:#f3ece4;color:#4a3222;padding:3px 6px;border-radius:4px;margin-bottom:5px;text-align:center;font-size:7.5pt;font-weight:700;letter-spacing:0.5px;">
+      SOLDE FINAL — Réservation N° ${invoiceData.sourceReservationNo || ''}
     </div>
-    <p style="margin:3px 0;border-bottom:1.5px dashed #000;"></p>
-    <div style="font-size:8.5pt;background:#f0f0f0;padding:4px 3px;border-radius:3px;margin-bottom:4px;text-align:center;font-weight:bold;">
-       SOLDE FINAL — Réservation N° ${invoiceData.sourceReservationNo || ''}
-    </div>
-    <div style="font-size:9pt;">
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;">
-        <span>N° Facture:</span>
-        <span style="font-weight:bold;word-break:break-all;">${invoiceData.invoiceNumber}</span>
+    <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">N° Facture :</span>
+        <span style="font-weight:800;color:#1a120c;font-family:monospace;">${invoiceData.invoiceNumber}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;"><span>Date:</span><span>${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span></div>
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;"><span>Caissière:</span><span>${invoiceData.createdBy?.name || 'Caissière'}</span></div>
-      ${invoiceData.clientName ? `<div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;"><span>Client:</span><span style="font-weight:bold;word-break:break-word;">${invoiceData.clientName}</span></div>` : ''}
-      ${invoiceData.clientPhone ? `<div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin:2px 0;"><span>Tél:</span><span style="font-weight:bold;">${invoiceData.clientPhone}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Date :</span>
+        <span style="color:#1a120c;font-weight:600;">${new Date(invoiceData.createdAt).toLocaleString('fr-FR')}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:1px 0;">
+        <span style="color:#666;">Caissière :</span>
+        <span style="color:#1a120c;font-weight:600;">${invoiceData.createdBy?.name || 'Caissière'}</span>
+      </div>
+      ${invoiceData.clientName ? `<div style="display:flex;justify-content:space-between;margin:1px 0;"><span style="color:#666;">Client :</span><span style="font-weight:700;color:#1a120c;">${invoiceData.clientName}</span></div>` : ''}
+      ${invoiceData.clientPhone ? `<div style="display:flex;justify-content:space-between;margin:1px 0;"><span style="color:#666;">Tél :</span><span style="font-weight:600;color:#1a120c;">${invoiceData.clientPhone}</span></div>` : ''}
     </div>
-    <p style="margin:5px 0;border-bottom:1.5px dashed #000;"></p>
-    ${itemsRows}
-    <p style="margin:5px 0;border-top:2px solid #000;border-bottom:2px solid #000;"></p>
-    <div style="font-size:11pt;font-weight:bold;display:flex;justify-content:space-between;flex-wrap:wrap;margin-top:5px;">
-      <span>TOTAL COMMANDE:</span><span style="word-break:break-all;">${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
+
+    ${renderBeautyItemsList(invoiceData.items || [])}
+
+    <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin-top:6px;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10pt;font-weight:800;color:#1a120c;">
+        <span>TOTAL COMMANDE :</span>
+        <span style="font-size:11.5pt;">${Math.round(invoiceData.totalAmount).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+      <div style="font-size:7.5pt;font-weight:800;color:#7c6858;letter-spacing:0.8px;text-transform:uppercase;margin:3px 0 2px 0;">
+        HISTORIQUE DES VERSEMENTS (${payments.length}/3)
+      </div>
+      ${paymentsRows || '<div style="font-style:italic;font-size:7.5pt;color:#888;">Aucun versement enregistré</div>'}
+      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;color:#666;">
+        <span>Total payé :</span>
+        <span style="font-weight:700;color:#1a120c;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8.5pt;font-weight:800;color:#1a120c;margin-top:2px;">
+        <span>SOLDE RESTANT :</span>
+        <span style="color:#2d8a55;">0 FCFA</span>
+      </div>
+      ${lastPayment ? `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;padding:4px 6px;background:#fbf9f6;border:1px solid #2c1e14;border-radius:4px;font-weight:800;font-size:9pt;color:#1a120c;">
+        <span>MONTANT PAYÉ CE JOUR :</span>
+        <span style="font-size:10.5pt;">${Math.round(lastPaymentAmount).toLocaleString('fr-FR')} FCFA</span>
+      </div>` : ''}
     </div>
-    <p style="margin:6px 0;border-bottom:1.5px dashed #000;"></p>
-    <div style="font-weight:bold;margin:4px 0 2px 0;font-size:9pt;">HISTORIQUE DES VERSEMENTS (${payments.length}/3) :</div>
-    ${paymentsRows || '<div style="font-style:italic;font-size:8.5pt;">Aucun versement enregistré</div>'}
-    <p style="margin:4px 0;border-bottom:1.5px dashed #000;"></p>
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;font-size:8.5pt;">
-      <span>TOTAL PAYÉ:</span><span style="word-break:break-all;">${Math.round(totalPaid).toLocaleString('fr-FR')} FCFA</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;font-size:9pt;margin-top:2px;font-weight:bold;">
-      <span>SOLDE RESTANT:</span><span>0 FCFA</span>
-    </div>
-    ${lastPayment ? `
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;font-weight:900;font-size:13pt;margin:8px 0 4px 0;border:2px solid #000;padding:6px;background:#f9f9f9;">
-      <span>MONTANT PAYÉ CE JOUR:</span>
-      <span style="word-break:break-all;font-size:13pt;">${Math.round(lastPaymentAmount).toLocaleString('fr-FR')} FCFA</span>
-    </div>` : ''}
-    <p style="text-align:center;margin-top:10px;font-size:9pt;font-weight:bold;border:1.5px solid #000;padding:4px;">
+
+    <div style="text-align:center;margin-top:6px;font-size:8pt;font-weight:700;border:1.2px solid #2c1e14;border-radius:4px;padding:4px;background:#faf7f4;color:#1a120c;">
       RÉSERVATION ENTIÈREMENT SOLDÉE<br>Merci de votre confiance !
-    </p>
-    <p style="text-align:center;margin-top:10px;font-size:8.5pt;font-weight:bold;border-top:1px dashed #000;padding-top:6px;margin-bottom:4px;">
-      Un article vendu n'est ni remboursable ni changeable
-    </p>
-    <p style="text-align:center;margin-top:6px;font-size:9pt;font-weight:bold;">Merci de votre visite !</p>
-    <div style="text-align:center;margin-top:8px;font-size:7.5pt;color:#000;font-weight:bold;">Fait par © TriSpark Digital1</div>
+    </div>
+
+    ${renderBeautyFooter()}
   `;
 
   const fullHtml = `<!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Facture POS</title>
-        <style>
-          @page { margin: 0; size: auto; }
-          * { box-sizing: border-box; }
-          html, body {
-            width: 70mm;
-            margin: 0 auto;
-            padding: 0;
-            font-family: 'Consolas', 'Lucida Console', 'Courier New', monospace;
-            font-size: 8.5pt;
-            letter-spacing: -0.2px;
-            line-height: 1.2;
-            color: #000;
-            background: #fff;
-            word-break: break-word;
-            overflow-wrap: break-word;
-            -webkit-print-color-adjust: exact;
-          }
-        </style>
+        <title>Facture Dimitri Perfect</title>
+        <style>${getBeautyReceiptStyles()}</style>
       </head>
       <body>${printHTML}</body>
     </html>`;

@@ -64,14 +64,14 @@ class InvoiceLifecycleApiTests(unittest.TestCase):
                 );
                 CREATE TABLE "Invoice" (
                     id TEXT PRIMARY KEY, invoiceNumber TEXT UNIQUE, totalAmount REAL, paymentMethod TEXT,
-                    clientName TEXT, clientPhone TEXT, isReservation INTEGER DEFAULT 0, reservationNo TEXT,
+                    clientName TEXT, clientPhone TEXT, shopType TEXT DEFAULT 'FEMME', isReservation INTEGER DEFAULT 0, reservationNo TEXT,
                     isDelivery INTEGER DEFAULT 0, deliveryNo TEXT, deliveryAddress TEXT, deliveryStatus TEXT,
                     deliveredAt TEXT, deliveryFee REAL DEFAULT 0, deliveryPerson TEXT, isPaid INTEGER DEFAULT 0,
                     paidAt TEXT, status TEXT DEFAULT 'VALIDATED', cancellationReason TEXT,
                     createdAt TEXT, createdById TEXT, cancelledById TEXT
                 );
                 CREATE TABLE "InvoiceItem" (
-                    id TEXT PRIMARY KEY, invoiceId TEXT, categoryName TEXT, price REAL
+                    id TEXT PRIMARY KEY, invoiceId TEXT, categoryName TEXT, price REAL, qty INTEGER DEFAULT 1, itemType TEXT DEFAULT 'SERVICE'
                 );
                 CREATE TABLE "Client" (
                     id TEXT PRIMARY KEY, name TEXT UNIQUE, phone TEXT, createdAt TEXT, updatedAt TEXT

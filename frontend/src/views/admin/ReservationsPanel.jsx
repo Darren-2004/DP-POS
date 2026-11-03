@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import ConfirmModal from '../../components/ConfirmModal';
 import { EmptyState, LoadingState } from '../../components/DesignSystem';
-import { formatFCFA, getTodayDateStr, triggerProformaPrint, cx, showToast, formatScheduledAt } from '../../utils/helpers';
+import { formatFCFA, getTodayDateStr, triggerProformaPrint, triggerFinalReservationPrint, cx, showToast, formatScheduledAt } from '../../utils/helpers';
 import { RotateCcw, Calendar, Printer, Trash2, XCircle } from 'lucide-react';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 export default function ReservationsPanel({
   reservations = [],
@@ -17,6 +18,7 @@ export default function ReservationsPanel({
   onRefresh,
   shopType = null,
 }) {
+  const { shopNames } = useShopNames();
   const [reservationStatusFilter, setReservationStatusFilter] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelTargetId, setCancelTargetId] = useState(null);
@@ -77,6 +79,27 @@ export default function ReservationsPanel({
     } finally {
       setIsCancelling(false);
       setDeleteTargetId(null);
+    }
+  };
+
+  const handlePrintDefinitive = async (reservation) => {
+    try {
+      const { API_BASE } = await import('../../utils/constants');
+      const response = await fetch(`${API_BASE}/reservations/${reservation.id}/create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (response.ok) {
+        const invData = await response.json();
+        triggerFinalReservationPrint(invData);
+        showToast('Facture définitive imprimée avec succès.', 'success');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.detail || err.error || 'Erreur lors de la génération de la facture définitive.', 'error');
+      }
+    } catch {
+      showToast('Erreur réseau', 'error');
     }
   };
 
@@ -322,7 +345,7 @@ export default function ReservationsPanel({
                           {res.bookingTime && <div className="text-neutral-400">{res.bookingTime}</div>}
                         </td>
                         <td className="py-2.5 px-2 text-neutral-500">
-                          {res.shopType === 'HOMME' ? 'Shop 1' : 'Shop 2'}
+                          {res.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
                         </td>
                         <td className="py-2.5 px-2 text-right font-semibold text-neutral-900">{formatFCFA(res.totalAmount)}</td>
                         <td className="py-2.5 px-2 text-right font-semibold text-[#b38059]">{formatFCFA(totalPaid)}</td>
@@ -356,7 +379,7 @@ export default function ReservationsPanel({
                               type="button"
                               onClick={() => triggerProformaPrint(res)}
                               className="text-neutral-400 hover:text-neutral-900 transition"
-                              title="Réimprimer le reçu"
+                              title="Réimprimer le reçu de réservation"
                             >
                               <Printer className="h-3.5 w-3.5" />
                             </button>
@@ -384,7 +407,7 @@ export default function ReservationsPanel({
                   <div className="flex justify-between"><span>Référence :</span><strong className="text-[#b38059]">{selectedReservation.reservationNo}</strong></div>
                   <div className="flex justify-between"><span>Prestation :</span><strong className="text-neutral-900">{selectedReservation.serviceName || 'Prestation salon'}</strong></div>
                   <div className="flex justify-between"><span>Rendez-vous :</span><strong>{formatScheduledAt(selectedReservation.scheduledAt)}</strong></div>
-                  <div className="flex justify-between"><span>Shop :</span><strong>{selectedReservation.shopType === 'HOMME' ? 'Shop 1' : 'Shop 2'}</strong></div>
+                  <div className="flex justify-between"><span>Shop :</span><strong>{selectedReservation.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}</strong></div>
                   <div className="flex justify-between"><span>Client :</span><strong>{selectedReservation.clientName || 'Client anonyme'}</strong></div>
                   <div className="flex justify-between"><span>Téléphone :</span><strong>{selectedReservation.clientPhone || '—'}</strong></div>
                   <div className="border-t border-neutral-200 pt-2 flex justify-between font-semibold"><span>Total :</span><strong className="text-[#b38059]">{formatFCFA(selectedReservation.totalAmount)}</strong></div>
@@ -411,16 +434,16 @@ export default function ReservationsPanel({
                   </div>
                 </div>
 
-                {selectedReservation.status !== 'CANCELLED' && (
+                {selectedReservation.status !== 'CANCELLED' && selectedReservation.status !== 'COMPLETED' ? (
                   <button
                     type="button"
                     onClick={() => setCancelTargetId(selectedReservation.id)}
                     disabled={isCancelling}
-                    className="w-full rounded border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-600 hover:border-neutral-400 disabled:opacity-40"
+                    className="w-full rounded border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-600 hover:border-neutral-400 disabled:opacity-40 cursor-pointer"
                   >
                     {isCancelling ? 'Annulation...' : 'Annuler ce rendez-vous'}
                   </button>
-                )}
+                ) : null}
               </div>
             </aside>
           )}

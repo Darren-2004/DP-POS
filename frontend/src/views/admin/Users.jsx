@@ -6,6 +6,7 @@ import { Trash2, Pencil, Plus } from 'lucide-react';
 import { API_BASE } from '../../utils/constants';
 import { apiFetch, showToast } from '../../utils/helpers';
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '../../components/DesignSystem';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 const ROLES = [
   { id: 'CASHIER', label: 'Caissier / Caissière' },
@@ -17,6 +18,7 @@ const underlineInputCls =
   'w-full border-0 border-b border-neutral-200 bg-transparent py-1.5 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none';
 
 export default function Users({ users = [], fetchUsers, loading = false, error = '', isManager = false, managerOnly = false, managerShopType = null }) {
+  const { shopNames } = useShopNames();
   const isShopManager = isManager;
   const allowedRoles = managerOnly ? ROLES.filter((role) => role.id === 'MANAGER') : ROLES;
   const [showCreate, setShowCreate] = useState(false);
@@ -199,7 +201,7 @@ export default function Users({ users = [], fetchUsers, loading = false, error =
                     <td className="py-2.5 pr-4 font-medium text-neutral-900">{u.name}</td>
                     <td className="py-2.5 px-3 text-neutral-600">{getRoleLabel(u.role)}</td>
                     <td className="py-2.5 px-3 text-neutral-500">
-                      {u.shopType === 'HOMME' ? 'Shop 1' : u.shopType === 'FEMME' ? 'Shop 2' : 'Tous'}
+                      {u.shopType === 'HOMME' ? shopNames.HOMME : u.shopType === 'FEMME' ? shopNames.FEMME : 'Tous'}
                     </td>
                     <td className="py-2.5 pl-4 text-right">
                       <div className="inline-flex items-center gap-2">
@@ -279,8 +281,8 @@ export default function Users({ users = [], fetchUsers, loading = false, error =
                     className={underlineInputCls}
                   >
                     {!managerOnly && <option value="ALL">Tous les shops</option>}
-                    <option value="HOMME">Shop 1</option>
-                    <option value="FEMME">Shop 2</option>
+                    <option value="HOMME">{shopNames.HOMME}</option>
+                    <option value="FEMME">{shopNames.FEMME}</option>
                   </select>
                 </Field>
               )}
@@ -354,8 +356,8 @@ export default function Users({ users = [], fetchUsers, loading = false, error =
                     className={underlineInputCls}
                   >
                     {!managerOnly && <option value="ALL">Tous les shops</option>}
-                    <option value="HOMME">Shop 1</option>
-                    <option value="FEMME">Shop 2</option>
+                    <option value="HOMME">{shopNames.HOMME}</option>
+                    <option value="FEMME">{shopNames.FEMME}</option>
                   </select>
                 </Field>
               )}

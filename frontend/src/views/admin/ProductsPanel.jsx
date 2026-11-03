@@ -4,6 +4,7 @@ import { PageHeader, LoadingState, EmptyState, ErrorState } from '../../componen
 import Field from '../../components/Field';
 import { formatFCFA, cx, showToast } from '../../utils/helpers';
 import { API_BASE } from '../../utils/constants';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 const PRODUCT_CATEGORIES = [
   'Mèches',
@@ -19,6 +20,7 @@ const underlineInputCls =
   'w-full border-0 border-b border-neutral-200 bg-transparent py-1.5 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none';
 
 export default function ProductsPanel({ currentUser }) {
+  const { shopNames } = useShopNames();
   const isManager = currentUser?.role === 'MANAGER';
   const managerShopType = isManager && ['HOMME', 'FEMME'].includes(currentUser.shopType) ? currentUser.shopType : null;
   const [products, setProducts] = useState([]);
@@ -190,9 +192,9 @@ export default function ProductsPanel({ currentUser }) {
             onChange={(e) => setShopFilter(e.target.value)}
             className="border-0 border-b border-neutral-200 bg-transparent py-1.5 text-xs text-neutral-900 outline-none focus:border-neutral-900"
           >
-            <option value="ALL">Tous les shops (Shop 1 & Shop 2)</option>
-            <option value="FEMME">Shop 2</option>
-            <option value="HOMME">Shop 1</option>
+            <option value="ALL">Tous les shops ({shopNames.HOMME} & {shopNames.FEMME})</option>
+            <option value="FEMME">{shopNames.FEMME}</option>
+            <option value="HOMME">{shopNames.HOMME}</option>
           </select>
         )}
       </div>
@@ -237,7 +239,7 @@ export default function ProductsPanel({ currentUser }) {
                     <td className="py-2.5 pr-4 font-medium text-neutral-900">{p.name}</td>
                     <td className="py-2.5 px-3 text-neutral-500">{p.category || 'Stock'}</td>
                     <td className="py-2.5 px-3 text-neutral-500">
-                      {p.shopType === 'HOMME' ? 'Shop 1' : p.shopType === 'FEMME' ? 'Shop 2' : 'Tous'}
+                      {p.shopType === 'HOMME' ? shopNames.HOMME : p.shopType === 'FEMME' ? shopNames.FEMME : 'Tous'}
                     </td>
                     <td className="py-2.5 px-3 text-right font-semibold text-[#b38059]">
                       {formatFCFA(p.price)}
@@ -334,8 +336,8 @@ export default function ProductsPanel({ currentUser }) {
                     className={underlineInputCls}
                   >
                     <option value="ALL">Mixte / Tous les shops</option>
-                    <option value="FEMME">Shop 2 uniquement</option>
-                    <option value="HOMME">Shop 1 uniquement</option>
+                    <option value="FEMME">{shopNames.FEMME} uniquement</option>
+                    <option value="HOMME">{shopNames.HOMME} uniquement</option>
                   </select>
                 </Field>
               )}

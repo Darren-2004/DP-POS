@@ -36,6 +36,8 @@ export default function CheckoutWorkspace({
   isSubmittingOrder,
   serverOnline,
   printStationId,
+  printStations = [],
+  setPrintStationId,
   stationSelectionRequired,
   currentUser,
   handleValidateAndPrint,
@@ -282,10 +284,18 @@ export default function CheckoutWorkspace({
                       {/* Quantity */}
                       <td className="px-2 py-2">
                         <input
-                          type="number"
-                          min="1"
+                          type="text"
+                          inputMode="numeric"
                           value={item.qty}
-                          onChange={(e) => handleUpdateCartField(item.id, 'qty', Math.max(1, parseInt(e.target.value) || 1))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9]/g, '');
+                            handleUpdateCartField(item.id, 'qty', raw);
+                          }}
+                          onBlur={() => {
+                            const val = parseInt(item.qty, 10);
+                            handleUpdateCartField(item.id, 'qty', !val || val < 1 ? 1 : val);
+                          }}
                           className="w-full border-0 border-b border-transparent bg-transparent text-center font-medium text-neutral-900 outline-none focus:border-neutral-900"
                         />
                       </td>
@@ -293,11 +303,18 @@ export default function CheckoutWorkspace({
                       {/* Unit Price (Editable!) */}
                       <td className="px-2 py-2">
                         <input
-                          type="number"
-                          min="0"
-                          step="100"
+                          type="text"
+                          inputMode="decimal"
                           value={item.price}
-                          onChange={(e) => handleUpdateCartField(item.id, 'price', Math.max(0, parseFloat(e.target.value) || 0))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9.]/g, '');
+                            handleUpdateCartField(item.id, 'price', raw);
+                          }}
+                          onBlur={() => {
+                            const num = parseFloat(item.price);
+                            handleUpdateCartField(item.id, 'price', isNaN(num) || num < 0 ? 0 : num);
+                          }}
                           className="w-full border-0 border-b border-transparent bg-transparent text-right font-medium text-neutral-900 outline-none focus:border-neutral-900"
                         />
                       </td>
@@ -333,6 +350,8 @@ export default function CheckoutWorkspace({
           currentUser={currentUser}
           serverOnline={serverOnline}
           printStationId={printStationId}
+          printStations={printStations}
+          setPrintStationId={setPrintStationId}
           stationSelectionRequired={stationSelectionRequired}
           isSubmittingOrder={isSubmittingOrder}
           showReservationMode={showReservationMode}

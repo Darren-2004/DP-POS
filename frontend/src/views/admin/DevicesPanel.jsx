@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { LoaderCircle, Printer, Trash2, Wifi } from 'lucide-react';
 import { API_BASE } from '../../utils/constants';
 import { showToast } from '../../utils/helpers';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 export default function DevicesPanel() {
+  const { shopNames } = useShopNames();
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -75,7 +77,7 @@ export default function DevicesPanel() {
       <div className="flex flex-col gap-2 border-b border-neutral-200 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="text-base font-semibold text-neutral-900">Imprimantes & Caisses Connectées</h2>
-          <p className="text-xs text-neutral-500">Configuration réseau des stations d'impression thermique du salon (Shop 1 / Shop 2)</p>
+          <p className="text-xs text-neutral-500">Configuration réseau des stations d'impression thermique du salon ({shopNames.HOMME} / {shopNames.FEMME})</p>
         </div>
         <div className="flex items-center gap-2 text-xs text-neutral-600">
           <Wifi className="h-4 w-4 text-emerald-600" />

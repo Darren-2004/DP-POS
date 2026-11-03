@@ -14,7 +14,10 @@ export default function CashierView({
   currentUser,
   serverOnline,
   activeTab = 'sale',
+  setActiveTab,
   printStationId,
+  printStations = [],
+  setPrintStationId,
   stationSelectionRequired,
   activeShop = 'ALL',
 }) {
@@ -51,6 +54,26 @@ export default function CashierView({
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  const formatClientName = (value) => {
+    return String(value ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+      .replace(/(^|\s|[-'])([a-zà-ÿ])/g, (match, prefix, char) => prefix + char.toUpperCase());
+  };
+
+  const handleClientNameChange = (value) => {
+    setClientName(formatClientName(value));
+  };
+
+  const handleClientPhoneChange = (value) => {
+    const cleaned = String(value ?? '')
+      .replace(/[^\d+]/g, '')
+      .replace(/(?!^)\+/g, '')
+      .slice(0, 15);
+    setClientPhone(cleaned);
+  };
 
   const handleAddItemToCart = (itemData) => {
     // itemData: { categoryName, price, qty, itemType }
@@ -115,13 +138,19 @@ export default function CashierView({
       return;
     }
 
-    const invalidLine = cart.find((item) => isNaN(item.price) || item.price < 0 || isNaN(item.qty) || item.qty < 1);
+    const invalidLine = cart.find(
+      (item) => isNaN(Number(item.price)) || Number(item.price) < 0 || isNaN(Number(item.qty)) || Number(item.qty) < 1
+    );
     if (invalidLine) {
       showToast(`Veuillez vérifier le prix ou la quantité de "${invalidLine.categoryName}"`, 'error');
       return;
     }
 
     const targetTotal = getCartTotal();
+    if (targetTotal < 0) {
+      showToast('Le montant total de la commande ne peut pas être négatif.', 'error');
+      return;
+    }
     if (!validateMultiplePayments(targetTotal)) return;
 
     const formattedClient = clientName.trim() && clientPhone.trim()
@@ -248,28 +277,42 @@ export default function CashierView({
   const handleTransferToCart = (resObj) => {
     setClientName(resObj.clientName || '');
     setClientPhone(resObj.clientPhone || '');
-    if (resObj.items && resObj.items.length > 0) {
-      setCart(
-        resObj.items.map((it) => ({
+    const advanceAlreadyPaid = Number(resObj.totalPaid || resObj.advanceAmount || 0);
+
+    const cartItems = resObj.items && resObj.items.length > 0
+      ? resObj.items.map((it) => ({
           id: Date.now().toString(36) + Math.random().toString(36).substring(2, 6),
           categoryName: it.categoryName,
-          price: it.price,
-          qty: it.qty || 1,
-          itemType: 'SERVICE',
+          price: Number(it.price) || 0,
+          qty: Number(it.qty) || 1,
+          itemType: it.itemType || 'SERVICE',
         }))
-      );
-    } else {
-      setCart([
-        {
-          id: Date.now().toString(36) + Math.random().toString(36).substring(2, 6),
-          categoryName: resObj.serviceName || 'Prestation salon',
-          price: resObj.totalAmount || 0,
-          qty: 1,
-          itemType: 'SERVICE',
-        },
-      ]);
+      : [
+          {
+            id: Date.now().toString(36) + Math.random().toString(36).substring(2, 6),
+            categoryName: resObj.serviceName || 'Prestation salon',
+            price: Number(resObj.totalAmount) || 0,
+            qty: 1,
+            itemType: 'SERVICE',
+          },
+        ];
+
+    if (advanceAlreadyPaid > 0) {
+      cartItems.push({
+        id: Date.now().toString(36) + Math.random().toString(36).substring(2, 6),
+        categoryName: `Acompte déduit (${resObj.reservationNo})`,
+        price: -advanceAlreadyPaid,
+        qty: 1,
+        itemType: 'SERVICE',
+      });
     }
-    showToast(`Rendez-vous de ${resObj.clientName} chargé dans la caisse !`, 'success');
+
+    setCart(cartItems);
+    if (setActiveTab) setActiveTab('sale');
+    const msg = advanceAlreadyPaid > 0
+      ? `Rendez-vous de ${resObj.clientName} chargé en caisse (Acompte de ${formatFCFA(advanceAlreadyPaid)} déduit) !`
+      : `Rendez-vous de ${resObj.clientName} chargé dans la caisse !`;
+    showToast(msg, 'success');
   };
 
   return (
@@ -289,9 +332,9 @@ export default function CashierView({
           handleClearCart={handleClearCart}
           getCartTotal={getCartTotal}
           clientName={clientName}
-          setClientName={setClientName}
+          setClientName={handleClientNameChange}
           clientPhone={clientPhone}
-          setClientPhone={setClientPhone}
+          setClientPhone={handleClientPhoneChange}
           selectedMethods={selectedMethods}
           setSelectedMethods={setSelectedMethods}
           methodAmounts={methodAmounts}
@@ -307,6 +350,8 @@ export default function CashierView({
           isSubmittingOrder={isSubmittingOrder}
           serverOnline={serverOnline}
           printStationId={printStationId}
+          printStations={printStations}
+          setPrintStationId={setPrintStationId}
           stationSelectionRequired={stationSelectionRequired}
           currentUser={currentUser}
           handleValidateAndPrint={handleValidateAndPrint}
@@ -322,6 +367,7 @@ export default function CashierView({
           serverOnline={serverOnline}
           printStationId={printStationId}
           onTransferToCart={handleTransferToCart}
+          activeShop={activeShop}
         />
       )}
 

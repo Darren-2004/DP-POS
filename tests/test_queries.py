@@ -42,13 +42,13 @@ class ReadQueryTests(unittest.TestCase):
                 );
                 CREATE TABLE "Invoice" (
                     id TEXT PRIMARY KEY, invoiceNumber TEXT, totalAmount REAL, paymentMethod TEXT,
-                    clientName TEXT, clientPhone TEXT, isReservation INTEGER, isDelivery INTEGER,
+                    clientName TEXT, clientPhone TEXT, shopType TEXT DEFAULT 'FEMME', isReservation INTEGER, isDelivery INTEGER,
                     deliveryNo TEXT, deliveryAddress TEXT, deliveryStatus TEXT, deliveryPerson TEXT,
                     deliveryFee REAL, isPaid INTEGER, status TEXT, createdAt TEXT,
                     createdById TEXT, cancelledById TEXT
                 );
                 CREATE TABLE "InvoiceItem" (
-                    id TEXT PRIMARY KEY, invoiceId TEXT, categoryName TEXT, price REAL
+                    id TEXT PRIMARY KEY, invoiceId TEXT, categoryName TEXT, price REAL, qty INTEGER DEFAULT 1, itemType TEXT DEFAULT 'SERVICE'
                 );
                 CREATE TABLE "Reservation" (
                     id TEXT PRIMARY KEY, clientName TEXT, status TEXT, totalAmount REAL, createdAt TEXT

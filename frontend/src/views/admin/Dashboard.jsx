@@ -19,6 +19,7 @@ import DualLineChart from '../../components/charts/DualLineChart';
 import DonutChart from '../../components/charts/DonutChart';
 import HorizontalBarChart from '../../components/charts/HorizontalBarChart';
 import DateRangeFilter from '../../components/DateRangeFilter';
+import { useShopNames } from '../../components/ShopNamesContext';
 
 export default function Dashboard({
   stats = {},
@@ -36,12 +37,13 @@ export default function Dashboard({
   shopType = null,
   onScopeChange,
 }) {
+  const { shopNames } = useShopNames();
   const [comparisonPeriod, setComparisonPeriod] = useState('months'); // 'months' or 'week'
 
   const isAllDates = !startDate || !endDate;
   const periodLabel = isAllDates ? 'toutes les dates' : startDate === endDate ? `du ${startDate}` : `du ${startDate} au ${endDate}`;
   const activeShopLabel =
-    shopType === 'HOMME' ? 'Shop 1' : shopType === 'FEMME' ? 'Shop 2' : 'Tous les shops (Réseau)';
+    shopType === 'HOMME' ? shopNames.HOMME : shopType === 'FEMME' ? shopNames.FEMME : `Tous les shops (Réseau)`;
 
   const analytics = stats?.analytics || {};
   const growthPercentage = stats?.growthPercentage;
@@ -77,8 +79,8 @@ export default function Dashboard({
 
   // Pie chart showing total revenue divided by each shop
   const shopPieData = [
-    { label: 'Shop 1', value: shop1Revenue, color: '#b38059' },
-    { label: 'Shop 2', value: shop2Revenue, color: '#2563eb' },
+    { label: shopNames.HOMME, value: shop1Revenue, color: '#b38059' },
+    { label: shopNames.FEMME, value: shop2Revenue, color: '#2563eb' },
   ].filter((d) => d.value > 0);
 
   // Fallback if no revenue yet
@@ -86,8 +88,8 @@ export default function Dashboard({
     shopPieData.length > 0
       ? shopPieData
       : [
-          { label: 'Shop 1', value: 0, color: '#b38059' },
-          { label: 'Shop 2', value: 0, color: '#2563eb' },
+          { label: shopNames.HOMME, value: 0, color: '#b38059' },
+          { label: shopNames.FEMME, value: 0, color: '#2563eb' },
         ];
 
   // Dual Line Chart Comparative Data (Months vs Days of Current Week)
@@ -219,7 +221,7 @@ export default function Dashboard({
           description={
             shopType
               ? `Indicateurs financiers et ventes de ${activeShopLabel}, ${periodLabel}.`
-              : `Vue consolidée du réseau (Shop 1 & Shop 2) – Ventes, stock et palmarès, ${periodLabel}.`
+              : `Vue consolidée du réseau (${shopNames.HOMME} & ${shopNames.FEMME}) – Ventes, stock et palmarès, ${periodLabel}.`
           }
         />
       </div>
@@ -299,7 +301,7 @@ export default function Dashboard({
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
-              Shop 1
+              {shopNames.HOMME}
             </button>
             <button
               type="button"
@@ -310,7 +312,7 @@ export default function Dashboard({
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
-              Shop 2
+              {shopNames.FEMME}
             </button>
           </div>
         )}
@@ -480,10 +482,10 @@ export default function Dashboard({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 pb-3 mb-4">
             <div>
               <h3 className="text-sm font-bold text-neutral-900">
-                Courbe Comparative : Shop 1 vs Shop 2
+                Courbe Comparative : {shopNames.HOMME} vs {shopNames.FEMME}
               </h3>
               <p className="text-xs text-neutral-500">
-                Shop 1 en bronze et Shop 2 en bleu
+                {shopNames.HOMME} en bronze et {shopNames.FEMME} en bleu
               </p>
             </div>
 
@@ -519,8 +521,8 @@ export default function Dashboard({
             height={260}
             series1Key="shop1"
             series2Key="shop2"
-            series1Label="Shop 1"
-            series2Label="Shop 2"
+            series1Label={shopNames.HOMME}
+            series2Label={shopNames.FEMME}
             series1Color="#b38059"
             series2Color="#2563eb"
             labelKey="label"
@@ -531,7 +533,7 @@ export default function Dashboard({
         <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
           <div className="border-b border-neutral-100 pb-3 mb-4">
             <h3 className="text-sm font-bold text-neutral-900">Répartition du CA par Shop</h3>
-            <p className="text-xs text-neutral-500">Part de Shop 1 vs Shop 2</p>
+            <p className="text-xs text-neutral-500">Part de {shopNames.HOMME} vs {shopNames.FEMME}</p>
           </div>
 
           <DonutChart

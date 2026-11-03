@@ -4,8 +4,23 @@ import Field, { inputCls } from './Field';
 import ClientAutocomplete from './ClientAutocomplete';
 import { formatFCFA, triggerPrint, triggerProformaPrint, triggerFinalReservationPrint, getTodayDateStr, cx, showToast } from '../utils/helpers';
 import { API_BASE } from '../utils/constants';
+import { useShopNames } from './ShopNamesContext';
 
-export default function ReservationsView({ categories = [], currentUser, serverOnline, printStationId, onTransferToCart }) {
+export default function ReservationsView({
+  categories = [],
+  currentUser,
+  serverOnline,
+  printStationId,
+  onTransferToCart,
+  activeShop = 'ALL',
+}) {
+  const { shopNames } = useShopNames();
+  const assignedShop = (currentUser?.shopType && currentUser.shopType !== 'ALL')
+    ? currentUser.shopType
+    : (activeShop && activeShop !== 'ALL')
+    ? activeShop
+    : 'FEMME';
+
   const [currentMonth, setCurrentMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -23,12 +38,18 @@ export default function ReservationsView({ categories = [], currentUser, serverO
   const [formServiceName, setFormServiceName] = useState('');
   const [formDate, setFormDate] = useState(() => getTodayDateStr());
   const [formTime, setFormTime] = useState('14:00');
-  const [formShopType, setFormShopType] = useState('FEMME');
   const [formAmount, setFormAmount] = useState('');
   const [formAdvance, setFormAdvance] = useState('');
   const [formPaymentMethod, setFormPaymentMethod] = useState('CASH');
   const [formNotes, setFormNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Settle / Payment Modal State
+  const [settleModalReservation, setSettleModalReservation] = useState(null);
+  const [settleAmount, setSettleAmount] = useState('');
+  const [settlePaymentMethod, setSettlePaymentMethod] = useState('CASH');
+  const [settleSubmitting, setSettleSubmitting] = useState(false);
+  const [printingDefinitiveId, setPrintingDefinitiveId] = useState(null);
 
   // Load reservations for the current displayed month
   const fetchMonthReservations = async () => {
@@ -145,7 +166,7 @@ export default function ReservationsView({ categories = [], currentUser, serverO
         scheduledAt,
         bookingTime: formTime,
         serviceName: formServiceName || 'Prestation salon',
-        shopType: formShopType,
+        shopType: assignedShop,
         totalAmount: amount,
         advanceAmount: advance,
         notes: formNotes,
@@ -199,6 +220,123 @@ export default function ReservationsView({ categories = [], currentUser, serverO
   const handlePrintAcompte = (reservation) => {
     triggerProformaPrint(reservation, printStationId);
   };
+
+  const openSettleModal = (res) => {
+    const total = parseFloat(res.totalAmount) || 0;
+    const paid = parseFloat(res.totalPaid) || parseFloat(res.advanceAmount) || 0;
+    const remaining = Math.max(0, total - paid);
+    setSettleAmount(String(remaining || ''));
+    setSettlePaymentMethod('CASH');
+    setSettleModalReservation(res);
+  };
+
+  const handleSettlePayment = async (e) => {
+    e.preventDefault();
+    if (!settleModalReservation) return;
+    const amt = parseFloat(settleAmount) || 0;
+    if (amt <= 0) {
+      showToast('Veuillez saisir un montant valide.', 'error');
+      return;
+    }
+
+    setSettleSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/reservations/${settleModalReservation.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amt,
+          paymentMethod: settlePaymentMethod,
+          createdById: currentUser?.id,
+          stationId: printStationId || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Erreur lors du versement", 'error');
+        setSettleSubmitting(false);
+        return;
+      }
+
+      const isCompleted = (data.remainingBalance || 0) <= 0.01 || data.status === 'COMPLETED';
+
+      if (isCompleted) {
+        if (data.invoice) {
+          triggerFinalReservationPrint(data.invoice);
+          showToast('Rendez-vous soldé ! Facture définitive imprimée.', 'success');
+        } else {
+          try {
+            const invRes = await fetch(`${API_BASE}/reservations/${settleModalReservation.id}/create-invoice`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                createdById: currentUser?.id,
+                stationId: printStationId || undefined,
+              }),
+            });
+            if (invRes.ok) {
+              const invData = await invRes.json();
+              triggerFinalReservationPrint(invData);
+              showToast('Rendez-vous soldé ! Facture définitive imprimée.', 'success');
+            } else {
+              triggerProformaPrint(data);
+              showToast('Règlement enregistré avec succès !', 'success');
+            }
+          } catch {
+            triggerProformaPrint(data);
+            showToast('Règlement enregistré avec succès !', 'success');
+          }
+        }
+      } else {
+        triggerProformaPrint(data);
+        showToast(`Versement de ${formatFCFA(amt)} enregistré !`, 'success');
+      }
+
+      setSettleModalReservation(null);
+      fetchMonthReservations();
+    } catch {
+      showToast('Erreur réseau lors du versement', 'error');
+    } finally {
+      setSettleSubmitting(false);
+    }
+  };
+
+  const handlePrintDefinitive = async (reservation) => {
+    setPrintingDefinitiveId(reservation.id);
+    try {
+      const invRes = await fetch(`${API_BASE}/reservations/${reservation.id}/create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          createdById: currentUser?.id,
+          stationId: printStationId || undefined,
+        }),
+      });
+      if (invRes.ok) {
+        const invData = await invRes.json();
+        triggerFinalReservationPrint(invData);
+        showToast('Facture définitive imprimée.', 'success');
+      } else {
+        const err = await invRes.json().catch(() => ({}));
+        showToast(err.detail || err.error || 'Impossible de générer la facture définitive', 'error');
+      }
+    } catch {
+      showToast('Erreur réseau', 'error');
+    } finally {
+      setPrintingDefinitiveId(null);
+    }
+  };
+
+  const conflictingReservation = monthReservations.find((r) => {
+    if (r.status === 'CANCELLED') return false;
+    const sameShop = assignedShop === 'ALL' || r.shopType === 'ALL' || r.shopType === assignedShop;
+    if (!sameShop) return false;
+    const resDate = r.scheduledAt ? r.scheduledAt.slice(0, 10) : r.createdAt ? r.createdAt.slice(0, 10) : '';
+    if (resDate !== formDate) return false;
+    const resTime = r.bookingTime || (r.scheduledAt ? r.scheduledAt.slice(11, 16) : '');
+    return resTime === formTime;
+  });
 
   const monthNames = [
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -376,36 +514,39 @@ export default function ReservationsView({ categories = [], currentUser, serverO
             </div>
           ) : (
             selectedDayReservations.map((r) => {
-              const isCompleted = r.status === 'COMPLETED';
-              const isCancelled = r.status === 'CANCELLED';
               const totalAmount = parseFloat(r.totalAmount) || 0;
               const totalPaid = parseFloat(r.totalPaid) || parseFloat(r.advanceAmount) || 0;
               const remaining = Math.max(0, totalAmount - totalPaid);
+              const isCompleted = r.status === 'COMPLETED' || (totalAmount > 0 && remaining <= 0.01);
+              const isCancelled = r.status === 'CANCELLED';
+              const resDate = r.scheduledAt ? r.scheduledAt.slice(0, 10) : r.createdAt ? r.createdAt.slice(0, 10) : '';
+              const isOverdue = resDate < getTodayDateStr() && !isCompleted && !isCancelled;
 
               return (
                 <div
                   key={r.id}
                   className={cx(
-                    'py-3.5 space-y-2',
+                    'py-3.5 space-y-2 rounded-lg p-2 transition',
+                    isOverdue && 'bg-amber-50/50 border border-amber-200/70',
                     isCancelled && 'opacity-50'
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="flex items-center gap-1 text-xs font-medium text-neutral-900">
-                          <Clock className="h-3 w-3 text-neutral-400" />
+                        <span className="flex items-center gap-1 text-xs font-semibold text-neutral-900 bg-neutral-100 px-1.5 py-0.5 rounded">
+                          <Clock className="h-3 w-3 text-neutral-500" />
                           {r.bookingTime || (r.scheduledAt ? r.scheduledAt.slice(11, 16) : '--:--')}
                         </span>
                         <h3 className="text-xs font-bold text-neutral-900">{r.clientName}</h3>
                         {r.shopType && (
-                          <span className="text-xs text-neutral-500">
-                            ({r.shopType === 'HOMME' ? 'Shop 1' : 'Shop 2'})
+                          <span className="text-[11px] font-medium text-neutral-500">
+                            ({r.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME})
                           </span>
                         )}
                       </div>
                       {r.clientPhone && (
-                        <p className="mt-0.5 flex items-center gap-1 text-xs text-neutral-500">
+                        <p className="mt-1 flex items-center gap-1 text-xs text-neutral-600">
                           <Phone className="h-3 w-3 text-emerald-600" />
                           <span>{r.clientPhone}</span>
                         </p>
@@ -413,60 +554,81 @@ export default function ReservationsView({ categories = [], currentUser, serverO
                     </div>
 
                     {/* Status Badge */}
-                    <span
-                      className={cx(
-                        'text-xs font-medium',
-                        isCompleted
-                          ? 'text-emerald-700'
-                          : isCancelled
-                          ? 'text-rose-700'
-                          : 'text-amber-700'
+                    <div className="shrink-0">
+                      {isCompleted ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                          <CheckCircle className="h-3 w-3" /> Honoré
+                        </span>
+                      ) : isCancelled ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
+                          <XCircle className="h-3 w-3" /> Annulé
+                        </span>
+                      ) : isOverdue ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded animate-pulse">
+                          ⚠️ En retard
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                          <Clock className="h-3 w-3 text-amber-600" /> En attente
+                        </span>
                       )}
-                    >
-                      {isCompleted ? 'Honoré' : isCancelled ? 'Annulé' : 'En attente'}
-                    </span>
+                    </div>
                   </div>
 
                   {/* Prestation / Service */}
-                  <div className="flex items-center justify-between text-xs py-1">
-                    <span className="font-medium text-neutral-900 truncate flex-1">
+                  <div className="flex items-center justify-between text-xs py-1 border-t border-b border-neutral-100">
+                    <span className="font-semibold text-neutral-900 truncate flex-1">
                       {r.serviceName || (r.items && r.items[0] ? r.items[0].categoryName : 'Prestation salon')}
                     </span>
-                    <span className="font-bold text-[#b38059] shrink-0 ml-2">
+                    <span className="font-bold text-[#b38059] shrink-0 ml-2 text-sm">
                       {formatFCFA(totalAmount)}
                     </span>
                   </div>
 
                   {/* Financials & Acompte */}
-                  {totalPaid > 0 && (
-                    <div className="flex items-center justify-between text-xs text-neutral-500 font-medium">
-                      <span>Acompte versé : <strong className="text-emerald-700">{formatFCFA(totalPaid)}</strong></span>
-                      <span>Solde restant : <strong className="text-[#b38059]">{formatFCFA(remaining)}</strong></span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between text-xs font-medium bg-[#fcfaf7] px-2.5 py-1.5 rounded border border-[#f2ece4]">
+                    <span>Acompte versé : <strong className="text-emerald-700 font-bold">{formatFCFA(totalPaid)}</strong></span>
+                    <span>Solde restant : <strong className={remaining > 0 ? "text-[#b38059] font-bold" : "text-emerald-700 font-bold"}>{formatFCFA(remaining)}</strong></span>
+                  </div>
 
                   {/* Actions */}
                   {!isCancelled && (
-                    <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 pt-1">
+                      {/* Settle Remaining Balance */}
+                      {!isCompleted && remaining > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => openSettleModal(r)}
+                          className="inline-flex items-center gap-1 rounded bg-[#b38059] hover:bg-[#9d6f4b] px-2.5 py-1 text-xs font-bold text-white shadow-xs cursor-pointer transition"
+                        >
+                          <CreditCard className="h-3.5 w-3.5" />
+                          <span>Régler le solde ({formatFCFA(remaining)})</span>
+                        </button>
+                      )}
+
+                      {/* Reprint Proforma / Acompte */}
                       {totalPaid > 0 && (
                         <button
                           type="button"
                           onClick={() => handlePrintAcompte(r)}
-                          className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-900 hover:bg-neutral-50 cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-800 hover:bg-neutral-50 cursor-pointer"
+                          title="Réimprimer le reçu proforma de l'acompte"
                         >
                           <Printer className="h-3.5 w-3.5 text-neutral-500" />
                           <span>Reçu acompte</span>
                         </button>
                       )}
 
+                      {/* Transfer to active cart (to add extra items/services) */}
                       {!isCompleted && onTransferToCart && (
                         <button
                           type="button"
                           onClick={() => onTransferToCart(r)}
-                          className="inline-flex items-center gap-1 rounded bg-[#b38059] hover:bg-[#9d6f4b] px-2.5 py-1 text-xs font-semibold text-white cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50 cursor-pointer"
+                          title="Charger dans la caisse pour ajouter d'autres articles ou prestations"
                         >
-                          <Scissors className="h-3.5 w-3.5" />
-                          <span>Encaisser en caisse</span>
+                          <Scissors className="h-3.5 w-3.5 text-neutral-500" />
+                          <span>Ajouter au panier caisse</span>
                         </button>
                       )}
 
@@ -474,7 +636,7 @@ export default function ReservationsView({ categories = [], currentUser, serverO
                         <button
                           type="button"
                           onClick={() => handleCancel(r.id)}
-                          className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-neutral-50 cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
                         >
                           <XCircle className="h-3.5 w-3.5" />
                           <span>Annuler</span>
@@ -484,8 +646,7 @@ export default function ReservationsView({ categories = [], currentUser, serverO
                   )}
                 </div>
               );
-            })
-          )}
+            }))}
         </div>
       </section>
 
@@ -532,18 +693,7 @@ export default function ReservationsView({ categories = [], currentUser, serverO
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Shop">
-                  <select
-                    value={formShopType}
-                    onChange={(e) => setFormShopType(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="FEMME">Shop 2</option>
-                    <option value="HOMME">Shop 1</option>
-                    <option value="ALL">Mixte / Tous</option>
-                  </select>
-                </Field>
+              <div>
                 <Field label="Prestation / Service" required>
                   <input
                     type="text"
@@ -577,23 +727,33 @@ export default function ReservationsView({ categories = [], currentUser, serverO
                 </Field>
               </div>
 
+              {conflictingReservation && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Créneau déjà occupé :</strong> {conflictingReservation.clientName} a un RDV à {formTime} ({conflictingReservation.serviceName || 'Prestation'}).
+                    <div className="text-[11px] text-amber-700 mt-0.5">Vous pouvez confirmer si un autre poste ou coiffeur est disponible.</div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Montant total estimé (FCFA)">
                   <input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     value={formAmount}
-                    onChange={(e) => setFormAmount(e.target.value)}
+                    onChange={(e) => setFormAmount(e.target.value.replace(/[^0-9]/g, ''))}
                     placeholder="0"
                     className={inputCls}
                   />
                 </Field>
                 <Field label="Acompte versé (optionnel)">
                   <input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     value={formAdvance}
-                    onChange={(e) => setFormAdvance(e.target.value)}
+                    onChange={(e) => setFormAdvance(e.target.value.replace(/[^0-9]/g, ''))}
                     placeholder="0"
                     className={inputCls}
                   />
@@ -638,6 +798,109 @@ export default function ReservationsView({ categories = [], currentUser, serverO
                   className="rounded bg-[#b38059] hover:bg-[#9d6f4b] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-45 cursor-pointer"
                 >
                   {submitting ? 'Enregistrement...' : 'Confirmer le rendez-vous'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: Encaisser le solde / Acompte */}
+      {settleModalReservation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4">
+          <div className="w-full max-w-md rounded-xl border border-neutral-200 bg-white p-5 shadow-xl animate-in fade-in duration-150">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-neutral-200">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-[#b38059]" />
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-900">Encaisser le Rendez-vous</h3>
+                  <div className="text-[11px] text-neutral-500 font-mono">
+                    Réf : {settleModalReservation.reservationNo}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettleModalReservation(null)}
+                className="p-1 text-neutral-400 hover:text-neutral-900 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Summary card */}
+            <div className="bg-[#fbf9f6] border border-[#ebe5df] rounded-lg p-3 text-xs space-y-1.5 mb-4">
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Client :</span>
+                <strong className="text-neutral-900">{settleModalReservation.clientName}</strong>
+              </div>
+              {settleModalReservation.clientPhone && (
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">Téléphone :</span>
+                  <span className="text-neutral-900 font-medium">{settleModalReservation.clientPhone}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Prestation :</span>
+                <span className="text-neutral-900 font-medium">{settleModalReservation.serviceName || 'Prestation salon'}</span>
+              </div>
+              <div className="flex justify-between border-t border-[#ebe5df] pt-1.5 font-medium">
+                <span className="text-neutral-600">Total prestation :</span>
+                <span className="text-neutral-900 font-bold">{formatFCFA(settleModalReservation.totalAmount)}</span>
+              </div>
+              <div className="flex justify-between text-neutral-600">
+                <span>Déjà réglé (acomptes) :</span>
+                <span className="text-emerald-700 font-bold">{formatFCFA(settleModalReservation.totalPaid || settleModalReservation.advanceAmount || 0)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-bold text-[#b38059] border-t border-[#ebe5df] pt-1">
+                <span>Solde restant :</span>
+                <span>{formatFCFA(settleModalReservation.remainingBalance !== undefined ? settleModalReservation.remainingBalance : Math.max(0, (settleModalReservation.totalAmount || 0) - (settleModalReservation.totalPaid || settleModalReservation.advanceAmount || 0)))}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSettlePayment} className="space-y-3.5 text-xs">
+              <Field label="Montant du versement (FCFA)" required>
+                <input
+                  type="number"
+                  min="1"
+                  max={settleModalReservation.remainingBalance || settleModalReservation.totalAmount}
+                  value={settleAmount}
+                  onChange={(e) => setSettleAmount(e.target.value)}
+                  placeholder="Montant à encaisser"
+                  className={inputCls}
+                  required
+                />
+              </Field>
+
+              <Field label="Mode de règlement" required>
+                <select
+                  value={settlePaymentMethod}
+                  onChange={(e) => setSettlePaymentMethod(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="CASH">Espèces</option>
+                  <option value="ONLINE">Mobile Money</option>
+                  <option value="ORANGE_MONEY">Orange Money</option>
+                </select>
+              </Field>
+
+              <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-emerald-900 text-[11px] leading-relaxed">
+                ✨ Si ce versement solde la totalité du montant, la <strong>Facture Définitive Dimitri Perfect</strong> sera automatiquement émise et imprimée.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-200">
+                <button
+                  type="button"
+                  onClick={() => setSettleModalReservation(null)}
+                  className="rounded border border-neutral-200 bg-white hover:bg-neutral-50 px-3.5 py-1.5 text-xs font-medium text-neutral-700 cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={settleSubmitting}
+                  className="rounded bg-[#b38059] hover:bg-[#9d6f4b] px-4 py-1.5 text-xs font-semibold text-white shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {settleSubmitting ? 'Encaissement...' : 'Valider & Imprimer'}
                 </button>
               </div>
             </form>

@@ -5,7 +5,7 @@ import AdminView from './views/AdminView';
 import Header from './components/Header';
 import { API_BASE } from './utils/constants';
 import { WifiOff, CheckCircle2, AlertCircle, X } from 'lucide-react';
-import { cx, getPrintMode, setPrintMode } from './utils/helpers';
+import { ShopNamesProvider } from './components/ShopNamesContext';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -79,8 +79,6 @@ export default function App() {
       return 'sale';
     }
   });
-
-  const [printMode, setPrintModeState] = useState(() => getPrintMode());
 
   const [currentView, setCurrentView] = useState(() => {
     try {
@@ -229,6 +227,7 @@ export default function App() {
   };
 
   return (
+    <ShopNamesProvider>
     <ErrorBoundary>
       <div className="flex h-screen flex-col overflow-hidden bg-[#f9f5f0] text-neutral-900 antialiased select-none font-sans">
         {/* Offline Banner */}
@@ -259,12 +258,7 @@ export default function App() {
         )}
 
         {!currentUser ? (
-          <main
-            className="flex min-h-0 flex-1 items-center justify-center bg-cover bg-center p-4"
-            style={{
-              backgroundImage: "linear-gradient(rgba(35, 24, 17, 0.48), rgba(35, 24, 17, 0.48)), url('/salon.jfif')",
-            }}
-          >
+          <main className="min-h-0 flex-1 overflow-hidden">
             <LoginView
               users={users}
               serverOnline={serverOnline}
@@ -284,13 +278,6 @@ export default function App() {
               onLogout={handleLogout}
               cashierTab={cashierTab}
               setCashierTab={setCashierTab}
-              printStations={printStations}
-              printStationId={printStationId}
-              setPrintStationId={setPrintStationId}
-              printMode={printMode}
-              setPrintMode={setPrintModeState}
-              activeShop={activeShop}
-              setActiveShop={setActiveShop}
             />
 
             <main className="min-h-0 flex-1 overflow-hidden">
@@ -325,7 +312,10 @@ export default function App() {
                   currentUser={currentUser}
                   serverOnline={serverOnline}
                   activeTab={cashierTab}
+                  setActiveTab={setCashierTab}
                   printStationId={printStationId}
+                  printStations={printStations}
+                  setPrintStationId={setPrintStationId}
                   activeShop={activeShop}
                 />
               )}
@@ -334,5 +324,6 @@ export default function App() {
         )}
       </div>
     </ErrorBoundary>
+    </ShopNamesProvider>
   );
 }
