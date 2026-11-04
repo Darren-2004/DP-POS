@@ -139,8 +139,7 @@ export const renderBeautyFooter = (extraNote = '') => `
     ${extraNote ? `<div style="font-size:7.5pt;font-weight:700;color:#000;margin-bottom:4px;line-height:1.3;">${extraNote}</div>` : ''}
     <div style="font-size:8pt;font-weight:700;color:#000;margin-bottom:2px;">✦ Merci de votre visite &amp; à très bientôt ! ✦</div>
     <div style="font-size:7.5pt;color:#000;font-weight:600;margin-bottom:3px;">Révélez votre beauté chez Dimitri Perfect</div>
-    <div style="font-size:7pt;color:#000;font-weight:600;margin-bottom:4px;line-height:1.25;">Les prestations et articles vendus ne sont ni remboursables ni échangeables.</div>
-    <div style="font-size:6.8pt;color:#000;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Fait Par TriSpark Digital</div>
+    <div style="font-size:7pt;color:#000;font-weight:600;margin-bottom:4px;line-height:1.25;">La référence et l'excellence en terme de qualité de service et prestation</div>
   </div>
 `;
 
@@ -263,14 +262,20 @@ export const setPrintMode = (mode) => {
 
 export const printHTMLDirectly = (htmlContent) => {
   try {
+    const existing = document.getElementById('pos-direct-print-frame');
+    if (existing) {
+      existing.remove();
+    }
+
     const iframe = document.createElement('iframe');
+    iframe.id = 'pos-direct-print-frame';
     iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0px';
-    iframe.style.height = '0px';
+    iframe.style.left = '-9999px';
+    iframe.style.top = '-9999px';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
     iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
+    iframe.style.opacity = '0.01';
     document.body.appendChild(iframe);
 
     const doc = iframe.contentWindow.document;
@@ -278,20 +283,24 @@ export const printHTMLDirectly = (htmlContent) => {
     doc.write(htmlContent);
     doc.close();
 
-    setTimeout(() => {
+    const doPrint = () => {
       try {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
       } catch (e) {
-        console.error('Focus/print error:', e);
+        console.error('Erreur focus/print iframe:', e);
       }
       setTimeout(() => {
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
-        }
-      }, 1000);
-    }, 200);
-    showToast('Ticket imprimé (Mode Direct Navigateur).', 'success');
+        try {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        } catch (_) {}
+      }, 1500);
+    };
+
+    setTimeout(doPrint, 250);
+    showToast('Impression lancée (Navigateur Chrome).', 'success');
   } catch (err) {
     console.error('Direct print error:', err);
     showToast(`Erreur d’impression : ${err.message}`, 'error');
@@ -305,17 +314,19 @@ const dispatchPrint = (htmlContent, payload, documentType, documentId) => {
 
   const mode = getPrintMode();
   if (mode === 'PRINT_AGENT') {
-    enqueuePrintJob(payload, documentType, documentId);
+    enqueuePrintJob(payload, documentType, documentId, htmlContent);
   } else {
     printHTMLDirectly(htmlContent);
   }
 };
 
-const enqueuePrintJob = async (payload, documentType, documentId) => {
+const enqueuePrintJob = async (payload, documentType, documentId, htmlFallback = null) => {
   const existingPrintJob = payload.printJob || payload.invoiceData?.printJob;
   const stationId = existingPrintJob?.stationId || getCurrentPrintStationId();
   if (!stationId) {
-    showToast('Choisissez la caisse de cette imprimante avant d’imprimer.', 'warning');
+    if (htmlFallback) {
+      printHTMLDirectly(htmlFallback);
+    }
     return;
   }
   if (existingPrintJob?.jobId) {
@@ -338,7 +349,12 @@ const enqueuePrintJob = async (payload, documentType, documentId) => {
     showToast('Ticket envoyé à l’imprimante de cette caisse.', 'info');
     watchPrintJob(job.jobId, stationId);
   } catch (error) {
-    showToast(`Échec de mise en file d’impression : ${error.message}`, 'error');
+    console.warn('Agent inaccessible, secours automatique navigateur:', error);
+    if (htmlFallback) {
+      printHTMLDirectly(htmlFallback);
+    } else {
+      showToast(`Échec d’impression agent : ${error.message}`, 'error');
+    }
   }
 };
 

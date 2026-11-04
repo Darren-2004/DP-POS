@@ -244,7 +244,7 @@ export default function CheckoutControls({
           >
             <option value="">Navigateur Chrome (par défaut)</option>
             {printStations.map((station) => (
-              <option key={station.id} value={station.id}>
+              <option key={station.id} value={station.id} disabled={!station.online}>
                 {station.name}{station.online ? ' (en ligne)' : ' (hors ligne)'}
               </option>
             ))}

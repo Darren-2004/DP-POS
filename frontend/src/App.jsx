@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import LoginView from './views/LoginView';
 import CashierView from './views/CashierView';
 import AdminView from './views/AdminView';
@@ -70,6 +70,7 @@ export default function App() {
 
   const [printStations, setPrintStations] = useState([]);
   const [printStationId, setPrintStationId] = useState(() => localStorage.getItem('pos_station_id_v2') || '');
+  const printStationAutoSelectionDone = useRef(false);
   const [toast, setToast] = useState(null);
 
   const [cashierTab, setCashierTab] = useState(() => {
@@ -198,14 +199,18 @@ export default function App() {
         const data = await res.json();
         if (Array.isArray(data)) {
           setPrintStations(data);
-          if (data.length === 1 && !printStationId) {
-            setPrintStationId(data[0].id);
-          } else if (data.length > 1 && !printStationId && currentUser?.shopType) {
-            const match = data.find((st) =>
-              st.name.toUpperCase().includes(currentUser.shopType.toUpperCase())
-            );
-            if (match) setPrintStationId(match.id);
-          }
+          const shouldAutoSelect = !printStationAutoSelectionDone.current;
+          printStationAutoSelectionDone.current = true;
+          setPrintStationId((currentId) => {
+            const selectedStationOnline = data.some((station) => station.id === currentId && station.online);
+            if (currentId && selectedStationOnline) return currentId;
+
+            if (shouldAutoSelect) {
+              const onlineStations = data.filter((station) => station.online);
+              if (onlineStations.length === 1) return onlineStations[0].id;
+            }
+            return '';
+          });
         }
       }
     } catch {
@@ -219,7 +224,10 @@ export default function App() {
     fetchCategories();
     fetchPrintStations();
 
-    const interval = setInterval(checkServerConnection, 5000);
+    const interval = setInterval(() => {
+      checkServerConnection();
+      fetchPrintStations();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
