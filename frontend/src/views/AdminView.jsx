@@ -105,13 +105,15 @@ export default function AdminView({
 
       const [statsRes, invsRes, resPayRes, resRes] = await Promise.all([
         fetch(`${API_BASE}/stats?${params.toString()}`),
-        fetch(
-          `${API_BASE}/invoices?${new URLSearchParams({
-            ...Object.fromEntries(params),
-            page: String(page),
-            pageSize: '50',
-          }).toString()}`
-        ),
+        adminTab === 'invoices'
+          ? Promise.resolve(null)
+          : fetch(
+              `${API_BASE}/invoices?${new URLSearchParams({
+                ...Object.fromEntries(params),
+                page: String(page),
+                pageSize: '50',
+              }).toString()}`
+            ),
         fetch(`${API_BASE}/reservation-payments?${params.toString()}`),
         fetch(`${API_BASE}/reservations?${reservationParams.toString()}`),
       ]);
@@ -157,9 +159,9 @@ export default function AdminView({
     } finally {
       if (fetchId === fetchIdRef.current) setDashboardLoading(false);
     }
-  }, [filterStartDate, filterEndDate, filterCashier, reservationFilterDate, invoicePage, isManager, currentShopType]);
+  }, [filterStartDate, filterEndDate, filterCashier, reservationFilterDate, invoicePage, isManager, currentShopType, adminTab]);
 
-  const fetchInvoices = async (date = filterDate, cashierId = filterCashier, page = invoicePage) => {
+  const fetchInvoices = useCallback(async (date = filterDate, cashierId = filterCashier, page = invoicePage) => {
     try {
       const params = new URLSearchParams();
       if (date) params.append('date', date);
@@ -178,12 +180,17 @@ export default function AdminView({
             ? data
             : []
         );
-        if (!Array.isArray(responseData)) setInvoicePagination(responseData);
+        if (!Array.isArray(responseData)) {
+          setInvoicePagination(responseData);
+          if (Number(responseData.page) && Number(responseData.page) !== page) {
+            setInvoicePage(Number(responseData.page));
+          }
+        }
       }
     } catch {
       // Ignore
     }
-  };
+  }, [filterDate, filterCashier, invoicePage, currentShopType]);
 
   useEffect(() => {
     refreshDashboardData();

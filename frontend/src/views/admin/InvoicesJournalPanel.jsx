@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FileText,
   Search,
@@ -44,6 +44,19 @@ export default function InvoicesJournalPanel({
   const [cancelReason, setCancelReason] = useState('Erreur de caisse');
   const [cancelError, setCancelError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const totalPages = Number(invoicePagination.totalPages) || 0;
+  const currentPage = Number(invoicePagination.page) || invoicePage;
+
+  useEffect(() => {
+    if (typeof fetchInvoices === 'function') {
+      fetchInvoices(filterDate, undefined, invoicePage);
+    }
+  }, [fetchInvoices, filterDate, invoicePage]);
+
+  const changeInvoiceDate = (date) => {
+    if (typeof setInvoicePage === 'function') setInvoicePage(1);
+    if (typeof setFilterDate === 'function') setFilterDate(date);
+  };
 
   const safeInvoices = (Array.isArray(invoices) ? invoices : []).filter(
     (inv) => !shopType || (inv.shopType || 'FEMME') === shopType
@@ -123,18 +136,21 @@ export default function InvoicesJournalPanel({
             <input
               type="date"
               value={filterDate || ''}
-              onChange={(e) => setFilterDate && setFilterDate(e.target.value)}
+              onChange={(e) => changeInvoiceDate(e.target.value)}
               className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
             />
-            {filterDate && (
-              <button
-                type="button"
-                onClick={() => setFilterDate && setFilterDate('')}
-                className="text-[11px] text-neutral-400 hover:text-neutral-700 underline"
-              >
-                Effacer
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => changeInvoiceDate(filterDate ? '' : getTodayDateStr())}
+              aria-pressed={!filterDate}
+              className={`rounded border px-2.5 py-1 text-[11px] font-semibold transition ${
+                !filterDate
+                  ? 'border-[#b38059] bg-[#b38059] text-white'
+                  : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100'
+              }`}
+            >
+              Toutes les dates
+            </button>
           </div>
 
           {/* Status Filter */}
@@ -287,6 +303,33 @@ export default function InvoicesJournalPanel({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
+          <span>
+            {Number(invoicePagination.total) || 0} facture{Number(invoicePagination.total) > 1 ? 's' : ''}
+            {' · '}Page {currentPage} sur {totalPages}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setInvoicePage && setInvoicePage(Math.max(1, currentPage - 1))}
+              disabled={currentPage <= 1}
+              className="rounded border border-neutral-300 bg-white px-3 py-1.5 font-semibold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Précédent
+            </button>
+            <button
+              type="button"
+              onClick={() => setInvoicePage && setInvoicePage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage >= totalPages}
+              className="rounded border border-neutral-300 bg-white px-3 py-1.5 font-semibold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Suivant
+            </button>
+          </div>
         </div>
       )}
 
