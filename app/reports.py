@@ -53,7 +53,7 @@ def _cashier_name(connection, cashier_id):
     return row["name"] if row else None
 
 
-def _invoice_rows(connection, bounds=None, cashier_id=None, cashier_name=None, all_time=False, shop_type=None):
+def _invoice_rows(connection, bounds=None, cashier_id=None, cashier_name=None, all_time=False, shop_type=None, provider_id=None):
     clauses = ["status = 'VALIDATED'"]
     parameters = []
     if bounds and not all_time:
@@ -72,6 +72,16 @@ def _invoice_rows(connection, bounds=None, cashier_id=None, cashier_name=None, a
     if shop_type in {"HOMME", "FEMME"}:
         clauses.append('shopType = ?')
         parameters.append(shop_type)
+    if provider_id:
+        clauses.append(
+            '''EXISTS (
+                   SELECT 1 FROM "InvoiceItem" provider_item
+                   WHERE provider_item.invoiceId = "Invoice".id
+                     AND provider_item.providerId = ?
+                     AND COALESCE(provider_item.itemType, 'SERVICE') = 'SERVICE'
+               )'''
+        )
+        parameters.append(provider_id)
     return connection.execute(
         f'SELECT * FROM "Invoice" WHERE {" AND ".join(clauses)}', parameters
     ).fetchall()
@@ -168,6 +178,7 @@ def _category_totals(
     dashboard_cashier_filter=False,
     eligible_deliveries=True,
     shop_type=None,
+    provider_id=None,
 ):
     clauses = ["i.status = 'VALIDATED'"]
     parameters = []
@@ -186,6 +197,11 @@ def _category_totals(
         else:
             clauses.append("i.createdById = ?")
             parameters.append(cashier_id)
+    if provider_id:
+        clauses.append(
+            "item.providerId = ? AND COALESCE(item.itemType, 'SERVICE') = 'SERVICE'"
+        )
+        parameters.append(provider_id)
     rows = connection.execute(
         f'''SELECT item.categoryName, item.price FROM "InvoiceItem" item
             JOIN "Invoice" i ON i.id = item.invoiceId
@@ -200,9 +216,17 @@ def _category_totals(
     return sorted(totals.values(), key=lambda entry: entry["revenue"], reverse=True)
 
 
-def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, shop_type=None, all_time=False, query=None):
+def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, shop_type=None, all_time=False, query=None, provider_id=None):
     query = query or {}
-    invoices = _invoice_rows(connection, bounds, cashier_id, cashier_name, all_time=all_time, shop_type=shop_type)
+    invoices = _invoice_rows(
+        connection,
+        bounds,
+        cashier_id,
+        cashier_name,
+        all_time=all_time,
+        shop_type=shop_type,
+        provider_id=provider_id,
+    )
     payments_breakdown = {"CASH": 0.0, "ORANGE_MONEY": 0.0, "ONLINE": 0.0}
     total_sales = 0.0
     for inv in invoices:
@@ -212,7 +236,11 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
         for k in payments_breakdown:
             payments_breakdown[k] += m[k]
 
-    res_payments = _reservation_payment_rows(connection, bounds, cashier_id, all_time=all_time, shop_type=shop_type)
+    res_payments = (
+        []
+        if provider_id
+        else _reservation_payment_rows(connection, bounds, cashier_id, all_time=all_time, shop_type=shop_type)
+    )
     for p in res_payments:
         amt = float(p["amount"] or 0)
         total_sales += amt
@@ -357,7 +385,15 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
                 select_cols += ', qty'
             if has_item_type:
                 select_cols += ', itemType'
-            rows = connection.execute(f'SELECT {select_cols} FROM "InvoiceItem" WHERE invoiceId IN ({placeholders})', chunk).fetchall()
+            provider_clause = ""
+            item_parameters = list(chunk)
+            if provider_id:
+                provider_clause = " AND providerId = ?"
+                item_parameters.append(provider_id)
+            rows = connection.execute(
+                f'SELECT {select_cols} FROM "InvoiceItem" WHERE invoiceId IN ({placeholders}){provider_clause}',
+                item_parameters,
+            ).fetchall()
             for r in rows:
                 name = str(r["categoryName"] or "Article").strip()
                 price = float(r["price"] or 0)
@@ -470,13 +506,25 @@ def dashboard_stats(store, query):
     )
     cashier_id = query.get("cashierId")
     shop_type = query.get("shopType")
+    provider_id = query.get("providerId")
 
     with store._connect() as connection:
         cashier_name = _cashier_name(connection, cashier_id)
 
         def range_stats(bounds):
-            invoices = _invoice_rows(connection, bounds, cashier_id, cashier_name, shop_type=shop_type)
-            payments = _reservation_payment_rows(connection, bounds, cashier_id, shop_type=shop_type)
+            invoices = _invoice_rows(
+                connection,
+                bounds,
+                cashier_id,
+                cashier_name,
+                shop_type=shop_type,
+                provider_id=provider_id,
+            )
+            payments = (
+                []
+                if provider_id
+                else _reservation_payment_rows(connection, bounds, cashier_id, shop_type=shop_type)
+            )
             return _stats_for_rows(invoices, payments)
 
         today = range_stats(today_bounds)
@@ -488,8 +536,18 @@ def dashboard_stats(store, query):
         if filtered_bounds:
             filtered = range_stats(filtered_bounds)
         else:
-            invoices = _invoice_rows(connection, cashier_id=cashier_id, all_time=True, shop_type=shop_type)
-            payments = _reservation_payment_rows(connection, cashier_id=cashier_id, all_time=True, shop_type=shop_type)
+            invoices = _invoice_rows(
+                connection,
+                cashier_id=cashier_id,
+                all_time=True,
+                shop_type=shop_type,
+                provider_id=provider_id,
+            )
+            payments = (
+                []
+                if provider_id
+                else _reservation_payment_rows(connection, cashier_id=cashier_id, all_time=True, shop_type=shop_type)
+            )
             filtered = _stats_for_rows(invoices, payments, include_paid_delivery_count=False)
 
         effective_bounds = filtered_bounds if filtered_bounds else today_bounds
@@ -501,6 +559,7 @@ def dashboard_stats(store, query):
             dashboard_cashier_filter=True,
             eligible_deliveries=False,
             shop_type=shop_type,
+            provider_id=provider_id,
         )
         analytics = _enriched_analytics(
             connection,
@@ -510,6 +569,7 @@ def dashboard_stats(store, query):
             shop_type=shop_type,
             all_time=is_all_time,
             query=query,
+            provider_id=provider_id,
         )
 
         today_total = today.get("total", 0.0)
@@ -608,4 +668,304 @@ def product_sales_report(store, query):
         "products": normalized,
         "grandTotal": sum(product["total"] for product in normalized),
         "totalQuantity": sum(product["quantity"] for product in normalized),
+    }
+
+
+def service_provider_stats(store, query):
+    clauses = [
+        "i.status = 'VALIDATED'",
+        "COALESCE(item.itemType, 'SERVICE') = 'SERVICE'",
+        "item.providerId IS NOT NULL",
+    ]
+    parameters = []
+    bounds = _date_range(query, default_today=False)
+    if bounds:
+        clauses.append("i.createdAt BETWEEN ? AND ?")
+        parameters.extend(bounds)
+
+    shop_type = query.get("shopType")
+    if shop_type in {"HOMME", "FEMME"}:
+        clauses.append("i.shopType = ?")
+        parameters.append(shop_type)
+
+    with store._connect() as connection:
+        rows = connection.execute(
+            f'''SELECT item.providerId AS id,
+                       MAX(item.providerName) AS name,
+                       i.shopType,
+                       SUM(COALESCE(item.qty, 1)) AS serviceCount,
+                       SUM(item.price * COALESCE(item.qty, 1)) AS revenue
+                FROM "InvoiceItem" item
+                JOIN "Invoice" i ON i.id = item.invoiceId
+                WHERE {" AND ".join(clauses)}
+                GROUP BY item.providerId, i.shopType''',
+            parameters,
+        ).fetchall()
+        provider_clauses = []
+        provider_parameters = []
+        if shop_type in {"HOMME", "FEMME"}:
+            provider_clauses.append("shopType = ?")
+            provider_parameters.append(shop_type)
+        provider_where = f' WHERE {" AND ".join(provider_clauses)}' if provider_clauses else ""
+        registered_providers = connection.execute(
+            f'SELECT id, name, shopType FROM "ServiceProvider"{provider_where}',
+            provider_parameters,
+        ).fetchall()
+
+    providers = [
+        {
+            "id": row["id"],
+            "name": row["name"] or "Prestataire supprimé",
+            "shopType": row["shopType"],
+            "serviceCount": int(row["serviceCount"] or 0),
+            "revenue": float(row["revenue"] or 0),
+        }
+        for row in rows
+    ]
+    known_provider_shops = {(provider["id"], provider["shopType"]) for provider in providers}
+    for provider in registered_providers:
+        key = (provider["id"], provider["shopType"])
+        if key not in known_provider_shops:
+            providers.append({
+                "id": provider["id"],
+                "name": provider["name"],
+                "shopType": provider["shopType"],
+                "serviceCount": 0,
+                "revenue": 0.0,
+            })
+    active_providers = [provider for provider in providers if provider["serviceCount"] > 0]
+    top_by_count = sorted(active_providers, key=lambda row: (-row["serviceCount"], -row["revenue"], row["name"]))
+    top_by_revenue = sorted(active_providers, key=lambda row: (-row["revenue"], -row["serviceCount"], row["name"]))
+    top_by_average_revenue = sorted(
+        active_providers,
+        key=lambda row: (
+            -(row["revenue"] / row["serviceCount"] if row["serviceCount"] else 0),
+            -row["serviceCount"],
+            row["name"],
+        ),
+    )
+    return {
+        "providers": providers,
+        "topByCount": top_by_count,
+        "topByRevenue": top_by_revenue,
+        "topByAverageRevenue": top_by_average_revenue,
+    }
+
+
+def dashboard_insights(store, query, include_customer_follow_up=False):
+    now = datetime.now().astimezone()
+    current_year = now.year
+    bounds = _date_range(query, default_today=True)
+    today_bounds = _local_day_bounds(now.strftime("%Y-%m-%d"))
+    shop_type = query.get("shopType")
+    invoice_clauses = ["i.status = 'VALIDATED'", "i.createdAt BETWEEN ? AND ?"]
+    invoice_parameters = list(bounds)
+    if shop_type in {"HOMME", "FEMME"}:
+        invoice_clauses.append("i.shopType = ?")
+        invoice_parameters.append(shop_type)
+    invoice_where = " AND ".join(invoice_clauses)
+
+    months = [
+        {"month": date(current_year, month, 1).strftime("%b"), "shop1Revenue": 0.0, "shop2Revenue": 0.0, "total": 0.0}
+        for month in range(1, 13)
+    ]
+    year_bounds = (
+        _local_day_bounds(f"{current_year}-01-01")[0],
+        _local_day_bounds(f"{current_year}-12-31")[1],
+    )
+    trend_clauses = ["status = 'VALIDATED'", "createdAt BETWEEN ? AND ?"]
+    trend_parameters = list(year_bounds)
+    if shop_type in {"HOMME", "FEMME"}:
+        trend_clauses.append("shopType = ?")
+        trend_parameters.append(shop_type)
+    daily_clauses = ["i.status = 'VALIDATED'", "i.createdAt BETWEEN ? AND ?"]
+    daily_parameters = list(today_bounds)
+    follow_up_clauses = ["i.status = 'VALIDATED'", "i.shopType = ?"]
+    follow_up_parameters = [shop_type]
+    if shop_type in {"HOMME", "FEMME"}:
+        daily_clauses.append("i.shopType = ?")
+        daily_parameters.append(shop_type)
+
+    with store._connect() as connection:
+        staff_rows = connection.execute(
+            f'''SELECT u.id, u.name, u.role, u.shopType,
+                       COUNT(i.id) AS invoiceCount,
+                       COALESCE(SUM(i.totalAmount), 0) AS revenue
+                FROM "User" u
+                LEFT JOIN "Invoice" i
+                  ON i.createdById = u.id AND {invoice_where}
+                WHERE u.role IN ('CASHIER', 'MANAGER')
+                  AND (? IS NULL OR u.shopType = ? OR u.shopType = 'ALL')
+                GROUP BY u.id
+                ORDER BY revenue DESC, invoiceCount DESC, u.name COLLATE NOCASE''',
+            (*invoice_parameters, shop_type, shop_type),
+        ).fetchall()
+        provider_rows = connection.execute(
+            f'''SELECT item.providerId AS id,
+                       COALESCE(MAX(item.providerName), MAX(provider.name), 'Prestataire supprimé') AS name,
+                       i.shopType,
+                       SUM(COALESCE(item.qty, 1)) AS serviceCount,
+                       SUM(item.price * COALESCE(item.qty, 1)) AS revenue
+                FROM "InvoiceItem" item
+                JOIN "Invoice" i ON i.id = item.invoiceId
+                LEFT JOIN "ServiceProvider" provider ON provider.id = item.providerId
+                WHERE {invoice_where}
+                  AND item.providerId IS NOT NULL
+                  AND COALESCE(item.itemType, 'SERVICE') = 'SERVICE'
+                GROUP BY item.providerId, i.shopType
+                ORDER BY revenue DESC, serviceCount DESC, name COLLATE NOCASE''',
+            invoice_parameters,
+        ).fetchall()
+        trend_rows = connection.execute(
+            f'''SELECT createdAt, totalAmount, shopType
+                FROM "Invoice" i
+                WHERE {" AND ".join(trend_clauses)}''',
+            trend_parameters,
+        ).fetchall()
+
+        daily_invoices = connection.execute(
+            f'''SELECT i.totalAmount, i.paymentMethod, i.isReservation, i.isDelivery,
+                       i.isPaid, i.deliveryStatus, i.deliveryFee
+                FROM "Invoice" i
+                WHERE {" AND ".join(daily_clauses)}''',
+            daily_parameters,
+        ).fetchall()
+        daily_revenue = 0.0
+        daily_invoice_count = 0
+        daily_payments = {"CASH": 0.0, "ONLINE": 0.0, "ORANGE_MONEY": 0.0}
+        for row in daily_invoices:
+            if row["isReservation"]:
+                continue
+            if row["isDelivery"] and not row["isPaid"] and row["deliveryStatus"] != "DELIVERED":
+                continue
+            amount = float(row["totalAmount"] or 0) + (
+                float(row["deliveryFee"] or 0) if row["isDelivery"] else 0
+            )
+            daily_invoice_count += 1
+            daily_revenue += amount
+            breakdown = payment_method_breakdown(row["paymentMethod"], amount)
+            for method in daily_payments:
+                daily_payments[method] += breakdown[method]
+
+        daily_reservation_count = 0
+        pending_daily_reservations = 0
+        upcoming_appointments = []
+        follow_up_clients = []
+        if include_customer_follow_up:
+            today = now.date()
+            next_week = today + timedelta(days=7)
+            daily_reservation_payments = connection.execute(
+                '''SELECT p.amount, p.paymentMethod
+                   FROM "ReservationPayment" p
+                   JOIN "Reservation" r ON r.id = p.reservationId
+                   WHERE r.shopType = ? AND r.status != 'CANCELLED'
+                     AND p.createdAt BETWEEN ? AND ?''',
+                (shop_type, *today_bounds),
+            ).fetchall()
+            for payment in daily_reservation_payments:
+                amount = float(payment["amount"] or 0)
+                daily_revenue += amount
+                breakdown = payment_method_breakdown(payment["paymentMethod"], amount)
+                for method in daily_payments:
+                    daily_payments[method] += breakdown[method]
+            daily_reservation_count = connection.execute(
+                '''SELECT COUNT(*) FROM "Reservation"
+                   WHERE shopType = ? AND scheduledAt >= ? AND scheduledAt < ?
+                     AND status != 'CANCELLED' ''',
+                (shop_type, today.isoformat(), f"{today.isoformat()}T23:59:59"),
+            ).fetchone()[0]
+            pending_daily_reservations = connection.execute(
+                '''SELECT COUNT(*) FROM "Reservation"
+                   WHERE shopType = ? AND scheduledAt >= ? AND scheduledAt < ?
+                     AND status = 'PENDING' ''',
+                (shop_type, today.isoformat(), f"{today.isoformat()}T23:59:59"),
+            ).fetchone()[0]
+            upcoming_appointments = [
+                dict(row)
+                for row in connection.execute(
+                    '''SELECT id, clientName, clientPhone, scheduledAt, bookingTime, serviceName, status
+                       FROM "Reservation"
+                       WHERE shopType = ?
+                         AND status NOT IN ('CANCELLED', 'COMPLETED')
+                         AND scheduledAt >= ? AND scheduledAt < ?
+                       ORDER BY scheduledAt ASC
+                       LIMIT 20''',
+                    (
+                        shop_type,
+                        now.strftime("%Y-%m-%dT%H:%M:%S"),
+                        f"{next_week.isoformat()}T23:59:59",
+                    ),
+                ).fetchall()
+            ]
+            cutoff = (today - timedelta(days=60)).isoformat()
+            follow_up_clients = [
+                {
+                    "name": row["clientName"],
+                    "phone": row["clientPhone"],
+                    "lastPurchaseAt": row["lastPurchaseAt"],
+                    "invoiceCount": int(row["invoiceCount"] or 0),
+                    "daysSincePurchase": max(0, (today - date.fromisoformat(str(row["lastPurchaseAt"])[:10])).days),
+                }
+                for row in connection.execute(
+                    f'''SELECT clientName, MAX(clientPhone) AS clientPhone,
+                               MAX(createdAt) AS lastPurchaseAt, COUNT(*) AS invoiceCount
+                        FROM "Invoice" i
+                        WHERE {" AND ".join(follow_up_clauses)}
+                          AND clientName IS NOT NULL AND TRIM(clientName) != ''
+                        GROUP BY clientName
+                        HAVING MAX(createdAt) < ?
+                        ORDER BY lastPurchaseAt ASC
+                        LIMIT 20''',
+                    (*follow_up_parameters, _local_day_bounds(cutoff)[0]),
+                ).fetchall()
+            ]
+
+    for row in trend_rows:
+        if not row["createdAt"]:
+            continue
+        try:
+            local_date = datetime.fromisoformat(row["createdAt"].replace("Z", "+00:00")).astimezone()
+        except ValueError:
+            continue
+        month = months[local_date.month - 1]
+        revenue = float(row["totalAmount"] or 0)
+        if row["shopType"] == "HOMME":
+            month["shop1Revenue"] += revenue
+        else:
+            month["shop2Revenue"] += revenue
+        month["total"] += revenue
+
+    return {
+        "monthlyTrends": months,
+        "dailyOperations": {
+            "revenue": daily_revenue,
+            "invoiceCount": daily_invoice_count,
+            "payments": daily_payments,
+            "appointmentsToday": int(daily_reservation_count),
+            "pendingAppointmentsToday": int(pending_daily_reservations),
+        },
+        "staffPerformance": [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "role": row["role"],
+                "shopType": row["shopType"],
+                "invoiceCount": int(row["invoiceCount"] or 0),
+                "revenue": float(row["revenue"] or 0),
+            }
+            for row in staff_rows
+        ],
+        "providerPerformance": [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "shopType": row["shopType"],
+                "serviceCount": int(row["serviceCount"] or 0),
+                "revenue": float(row["revenue"] or 0),
+            }
+            for row in provider_rows
+        ],
+        "upcomingAppointments": upcoming_appointments,
+        "followUpClients": follow_up_clients,
+        "followUpThresholdDays": 60,
     }

@@ -3,7 +3,7 @@ import ReservationsView from '../components/ReservationsView';
 import CashierInvoicesView from '../components/CashierInvoicesView';
 import CashierStatsView from '../components/CashierStatsView';
 import CheckoutWorkspace from './CheckoutWorkspace';
-import { formatFCFA, triggerPrint, triggerProformaPrint, showToast, getPrintMode } from '../utils/helpers';
+import { apiFetch, formatFCFA, triggerPrint, triggerProformaPrint, showToast, getPrintMode } from '../utils/helpers';
 import { API_BASE } from '../utils/constants';
 
 export default function CashierView({
@@ -35,6 +35,14 @@ export default function CashierView({
   // Products from /api/products
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [serviceProviders, setServiceProviders] = useState([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
+  const [providersError, setProvidersError] = useState('');
+  const cashierShopType = ['HOMME', 'FEMME'].includes(currentUser?.shopType)
+    ? currentUser.shopType
+    : ['HOMME', 'FEMME'].includes(activeShop)
+      ? activeShop
+      : null;
 
   const fetchProducts = async () => {
     setProductsLoading(true);
@@ -51,9 +59,56 @@ export default function CashierView({
     }
   };
 
+  const handleUpdateCartProvider = (id, providerId) => {
+    const provider = serviceProviders.find((entry) => entry.id === providerId);
+    setCart((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, providerId: provider?.id || '', providerName: provider?.name || '' }
+          : item
+      )
+    );
+  };
+
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!currentUser?.id || !cashierShopType) {
+      setServiceProviders([]);
+      setProvidersError('');
+      return () => {
+        active = false;
+      };
+    }
+
+    const fetchServiceProviders = async () => {
+      setProvidersLoading(true);
+      setServiceProviders([]);
+      setProvidersError('');
+      try {
+        const params = new URLSearchParams({ shopType: cashierShopType });
+        const res = await apiFetch(`${API_BASE}/service-providers?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Impossible de charger les prestataires.');
+        if (active) setServiceProviders(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (active) {
+          setServiceProviders([]);
+          setProvidersError(error.message || 'Erreur réseau lors du chargement des prestataires.');
+        }
+      } finally {
+        if (active) setProvidersLoading(false);
+      }
+    };
+
+    fetchServiceProviders();
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id, currentUser?.shopType, cashierShopType]);
 
   const formatClientName = (value) => {
     return String(value ?? '')
@@ -83,6 +138,8 @@ export default function CashierView({
       price: typeof itemData === 'object' && itemData.price !== undefined ? itemData.price : '',
       qty: typeof itemData === 'object' && itemData.qty !== undefined ? itemData.qty : 1,
       itemType: typeof itemData === 'object' && itemData.itemType ? itemData.itemType : 'SERVICE',
+      providerId: typeof itemData === 'object' ? itemData.providerId || '' : '',
+      providerName: typeof itemData === 'object' ? itemData.providerName || '' : '',
     };
     setCart((prev) => [...prev, newItem]);
   };
@@ -159,7 +216,7 @@ export default function CashierView({
 
     setIsSubmittingOrder(true);
     try {
-      const res = await fetch(`${API_BASE}/invoices`, {
+      const res = await apiFetch(`${API_BASE}/invoices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,6 +228,7 @@ export default function CashierView({
             price: Number(it.price) || 0,
             qty: Number(it.qty) || 1,
             itemType: it.itemType || 'SERVICE',
+            providerId: it.providerId || undefined,
           })),
           createdById: currentUser.id,
           clientName: formattedClient,
@@ -325,9 +383,13 @@ export default function CashierView({
           onRetryCategories={onRetryCategories}
           products={products}
           productsLoading={productsLoading}
+          serviceProviders={serviceProviders}
+          providersLoading={providersLoading}
+          providersError={providersError}
           cart={cart}
           handleAddItemToCart={handleAddItemToCart}
           handleUpdateCartField={handleUpdateCartField}
+          handleUpdateCartProvider={handleUpdateCartProvider}
           handleRemoveFromCart={handleRemoveFromCart}
           handleClearCart={handleClearCart}
           getCartTotal={getCartTotal}

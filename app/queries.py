@@ -14,6 +14,17 @@ def _local_day_bounds(value):
     )
 
 
+def _invoice_item_select(connection):
+    columns = {
+        row["name"] for row in connection.execute('PRAGMA table_info("InvoiceItem")').fetchall()
+    }
+    provider_id = "providerId" if "providerId" in columns else "NULL AS providerId"
+    provider_name = "providerName" if "providerName" in columns else "NULL AS providerName"
+    item_type = "COALESCE(itemType, 'SERVICE')" if "itemType" in columns else "'SERVICE'"
+    qty = "COALESCE(qty, 1)" if "qty" in columns else "1"
+    return f"id, invoiceId, categoryName, price, {qty} AS qty, {item_type} AS itemType, {provider_id}, {provider_name}"
+
+
 def list_clients(store, query=""):
     search = str(query or "").strip()
     sql = 'SELECT id, name, phone, createdAt, updatedAt FROM "Client"'
@@ -106,6 +117,18 @@ def list_invoices(store, query):
         clauses.append('i.shopType = ?')
         parameters.append(query["shopType"])
 
+    provider_id = query.get("providerId")
+    if provider_id:
+        clauses.append(
+            '''EXISTS (
+                   SELECT 1 FROM "InvoiceItem" provider_item
+                   WHERE provider_item.invoiceId = i.id
+                     AND provider_item.providerId = ?
+                     AND COALESCE(provider_item.itemType, 'SERVICE') = 'SERVICE'
+               )'''
+        )
+        parameters.append(provider_id)
+
     if query.get("status"):
         clauses.append('i.status = ?')
         parameters.append(query["status"])
@@ -159,8 +182,9 @@ def list_invoices(store, query):
 
         invoice_ids = [row["id"] for row in invoices]
         placeholders = ",".join("?" for _ in invoice_ids)
+        item_select = _invoice_item_select(connection)
         items = connection.execute(
-            f'''SELECT id, invoiceId, categoryName, price, COALESCE(qty, 1) AS qty, COALESCE(itemType, 'SERVICE') AS itemType FROM "InvoiceItem"
+            f'''SELECT {item_select} FROM "InvoiceItem"
                 WHERE invoiceId IN ({placeholders})''',
             invoice_ids,
         ).fetchall()
@@ -211,10 +235,11 @@ def get_invoice_with_relations(connection, invoice_id):
     for field in ("isReservation", "isDelivery", "isPaid"):
         if field in invoice:
             invoice[field] = bool(invoice[field])
+    item_select = _invoice_item_select(connection)
     invoice["items"] = [
         dict(item)
         for item in connection.execute(
-            '''SELECT id, invoiceId, categoryName, price, COALESCE(qty, 1) AS qty, COALESCE(itemType, 'SERVICE') AS itemType
+            f'''SELECT {item_select}
                FROM "InvoiceItem" WHERE invoiceId = ?''',
             (invoice_id,),
         ).fetchall()

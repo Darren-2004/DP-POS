@@ -38,7 +38,7 @@ from app.deliveries import (
     update_delivery,
     upsert_delivery_person,
 )
-from app.reports import dashboard_stats, product_sales_report, z_report
+from app.reports import dashboard_insights, dashboard_stats, product_sales_report, service_provider_stats, z_report
 from app.operations import (
     database_diagnostics,
     get_backups_list,
@@ -102,7 +102,7 @@ def create_app(store=None):
     app.state.session_secret = (
         configured_session_secret.encode("utf-8")
         if configured_session_secret
-        else secrets.token_bytes(32)
+        else None
     )
     app.state.station_events = {}
     app.state.agent_sockets = {}
@@ -129,7 +129,7 @@ def create_app(store=None):
         scheme, _, token = (request.headers.get("authorization") or "").partition(" ")
         if scheme.lower() != "bearer" or not token:
             raise HTTPException(status_code=401, detail="Authentification requise")
-        user_id = verify_session_token(token, app.state.session_secret)
+        user_id = verify_session_token(token, get_session_secret())
         if not user_id:
             raise HTTPException(status_code=401, detail="Session invalide ou expirée")
         with get_store()._connect() as connection:
@@ -309,7 +309,7 @@ def create_app(store=None):
             "shopType": user["shopType"] or "ALL",
             "permissions": user["permissions"] or "ALL",
             "needsPinReset": bool(user["needsPinReset"]),
-            "accessToken": create_session_token(user["id"], app.state.session_secret),
+            "accessToken": create_session_token(user["id"], get_session_secret()),
         }
 
     @app.post("/api/auth/reset-pin")
@@ -416,7 +416,13 @@ def create_app(store=None):
     @app.post("/api/reservations", status_code=201)
     async def post_reservation(request: Request):
         try:
-            result = create_reservation(get_store(), await request.json())
+            body = await request.json()
+            reservation_items = body.get("items")
+            has_provider = isinstance(reservation_items, list) and any(
+                isinstance(item, dict) and item.get("providerId") for item in reservation_items
+            )
+            actor = authenticated_user(request) if has_provider else None
+            result = create_reservation(get_store(), body, actor=actor)
             if result.get("printJob"):
                 notify_station(result["printJob"]["stationId"])
             return result
@@ -588,6 +594,29 @@ def create_app(store=None):
     def get_stats(request: Request):
         return dashboard_stats(get_store(), dict(request.query_params))
 
+    @app.get("/api/dashboard-insights")
+    def get_dashboard_insights(request: Request):
+        actor = authenticated_user(request)
+        if actor["role"] not in {"ADMIN", "MANAGER"}:
+            raise HTTPException(status_code=403, detail="Droits insuffisants")
+        query = dict(request.query_params)
+        if actor["role"] == "MANAGER":
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun salon n'est assigné à ce compte")
+            if query.get("shopType") and query["shopType"] != actor["shopType"]:
+                raise HTTPException(status_code=403, detail="Données hors de votre salon")
+            query["shopType"] = actor["shopType"]
+        elif query.get("shopType") and query["shopType"] not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=400, detail="Salon invalide")
+
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+        return dashboard_insights(
+            get_store(),
+            query,
+            include_customer_follow_up=actor["role"] == "MANAGER",
+        )
+
     @app.get("/api/z-report")
     def get_z_report(request: Request):
         return z_report(get_store(), dict(request.query_params))
@@ -595,6 +624,108 @@ def create_app(store=None):
     @app.get("/api/product-sales-report")
     def get_product_sales_report(request: Request):
         return product_sales_report(get_store(), dict(request.query_params))
+
+    @app.get("/api/service-providers")
+    def list_service_providers(request: Request):
+        actor = authenticated_user(request)
+        requested_shop = request.query_params.get("shopType")
+        if requested_shop and requested_shop not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=400, detail="Salon invalide")
+        if actor["role"] in {"CASHIER", "MANAGER"}:
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun salon n'est assigné à ce compte")
+            if requested_shop and requested_shop != actor["shopType"]:
+                raise HTTPException(status_code=403, detail="Prestataires hors de votre salon")
+            requested_shop = actor["shopType"]
+        elif actor["role"] != "ADMIN":
+            raise HTTPException(status_code=403, detail="Droits insuffisants")
+
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            if requested_shop:
+                rows = connection.execute(
+                    'SELECT id, name, shopType FROM "ServiceProvider" WHERE shopType = ? ORDER BY name COLLATE NOCASE',
+                    (requested_shop,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    'SELECT id, name, shopType FROM "ServiceProvider" ORDER BY shopType, name COLLATE NOCASE'
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    @app.post("/api/service-providers", status_code=201)
+    async def create_service_provider(request: Request):
+        require_admin(request)
+        body = await request.json()
+        name = str(body.get("name") or "").strip()
+        shop_type = str(body.get("shopType") or "").strip()
+        if not name or len(name) > 100:
+            raise HTTPException(status_code=400, detail="Le nom du prestataire est requis (100 caractères maximum)")
+        if shop_type not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=400, detail="Salon invalide")
+        provider = {"id": str(uuid.uuid4()), "name": name, "shopType": shop_type}
+        try:
+            with get_store()._connect() as connection:
+                ensure_schema(connection)
+                connection.execute(
+                    'INSERT INTO "ServiceProvider" (id, name, shopType) VALUES (?, ?, ?)',
+                    (provider["id"], name, shop_type),
+                )
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(status_code=409, detail="Un prestataire portant ce nom existe déjà dans ce salon") from error
+        return provider
+
+    @app.put("/api/service-providers/{provider_id}")
+    async def update_service_provider(provider_id: str, request: Request):
+        require_admin(request)
+        body = await request.json()
+        name = str(body.get("name") or "").strip()
+        shop_type = str(body.get("shopType") or "").strip()
+        if not name or len(name) > 100:
+            raise HTTPException(status_code=400, detail="Le nom du prestataire est requis (100 caractères maximum)")
+        if shop_type not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=400, detail="Salon invalide")
+        try:
+            with get_store()._connect() as connection:
+                ensure_schema(connection)
+                cursor = connection.execute(
+                    'UPDATE "ServiceProvider" SET name = ?, shopType = ? WHERE id = ?',
+                    (name, shop_type, provider_id),
+                )
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Prestataire introuvable")
+                provider = connection.execute(
+                    'SELECT id, name, shopType FROM "ServiceProvider" WHERE id = ?', (provider_id,)
+                ).fetchone()
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(status_code=409, detail="Un prestataire portant ce nom existe déjà dans ce salon") from error
+        return dict(provider)
+
+    @app.delete("/api/service-providers/{provider_id}")
+    def delete_service_provider(provider_id: str, request: Request):
+        require_admin(request)
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            cursor = connection.execute('DELETE FROM "ServiceProvider" WHERE id = ?', (provider_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Prestataire introuvable")
+        return {"message": "Prestataire supprimé"}
+
+    @app.get("/api/service-provider-stats")
+    def get_service_provider_stats(request: Request):
+        actor = authenticated_user(request)
+        query = dict(request.query_params)
+        if actor["role"] == "MANAGER":
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun salon n'est assigné à ce compte")
+            if query.get("shopType") and query["shopType"] != actor["shopType"]:
+                raise HTTPException(status_code=403, detail="Statistiques hors de votre salon")
+            query["shopType"] = actor["shopType"]
+        elif actor["role"] != "ADMIN":
+            raise HTTPException(status_code=403, detail="Droits insuffisants")
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+        return service_provider_stats(get_store(), query)
 
     @app.post("/api/categories", status_code=201)
     async def create_category(request: Request):
@@ -789,6 +920,27 @@ def create_app(store=None):
             ensure_default_admin(app.state.print_store)
         return app.state.print_store
 
+    def get_session_secret():
+        if app.state.session_secret is None:
+            with get_store()._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    '''CREATE TABLE IF NOT EXISTS "AppConfig" (
+                           key TEXT PRIMARY KEY,
+                           value TEXT NOT NULL
+                       )'''
+                )
+                connection.execute(
+                    'INSERT OR IGNORE INTO "AppConfig" (key, value) VALUES (?, ?)',
+                    ("session_secret", secrets.token_urlsafe(48)),
+                )
+                row = connection.execute(
+                    'SELECT value FROM "AppConfig" WHERE key = ?',
+                    ("session_secret",),
+                ).fetchone()
+            app.state.session_secret = row["value"].encode("utf-8")
+        return app.state.session_secret
+
     def station_event(station_id):
         if station_id not in app.state.station_events:
             app.state.station_events[station_id] = asyncio.Event()
@@ -872,7 +1024,13 @@ def create_app(store=None):
     @app.post("/api/invoices", status_code=201)
     async def create_invoice_route(request: Request):
         try:
-            invoice = create_invoice(get_store(), await request.json())
+            body = await request.json()
+            invoice_items = body.get("items")
+            has_provider = isinstance(invoice_items, list) and any(
+                isinstance(item, dict) and item.get("providerId") for item in invoice_items
+            )
+            actor = authenticated_user(request) if has_provider else None
+            invoice = create_invoice(get_store(), body, actor=actor)
             if invoice.get("printJob"):
                 notify_station(invoice["printJob"].get("stationId", ""))
             return invoice

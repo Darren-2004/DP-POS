@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from app.print_jobs import UnknownStation
 from app.queries import get_invoice_with_relations
+from app.schema import ensure_schema
 
 
 class InvoiceError(Exception):
@@ -82,7 +83,7 @@ def _sync_client(database_path, raw_name, raw_phone):
         connection.close()
 
 
-def create_invoice(print_store, body):
+def create_invoice(print_store, body, actor=None):
     items = body.get("items")
     created_by_id = body.get("createdById")
     station_id = body.get("stationId")
@@ -99,7 +100,8 @@ def create_invoice(print_store, body):
                 str(item.get("categoryName") or "Article"),
                 float(item.get("price") or 0),
                 int(item.get("qty") or 1),
-                str(item.get("itemType") or "SERVICE")
+                str(item.get("itemType") or "SERVICE").upper(),
+                str(item.get("providerId") or "").strip() or None,
             )
             for item in items
         ]
@@ -108,10 +110,39 @@ def create_invoice(print_store, body):
 
     connection = print_store._open_connection()
     try:
+        ensure_schema(connection)
         connection.execute("BEGIN IMMEDIATE")
-        creator = connection.execute('SELECT id, name FROM "User" WHERE id = ?', (created_by_id,)).fetchone()
+        creator = connection.execute(
+            'SELECT id, name, role, shopType FROM "User" WHERE id = ?', (created_by_id,)
+        ).fetchone()
         if creator is None:
             raise InvoiceError(400, "Caissier introuvable")
+
+        shop_type = str(body.get("shopType") or "FEMME").strip()
+        if shop_type not in {"HOMME", "FEMME"}:
+            raise InvoiceError(400, "Salon invalide")
+        if creator["role"] in {"CASHIER", "MANAGER"} and creator["shopType"] in {"HOMME", "FEMME"}:
+            shop_type = creator["shopType"]
+
+        provider_ids = [provider_id for _, _, _, item_type, provider_id in item_values if provider_id]
+        if provider_ids:
+            if not actor or actor.get("id") != created_by_id:
+                raise InvoiceError(401, "Authentification requise pour attribuer un prestataire")
+            if creator["role"] in {"CASHIER", "MANAGER"} and creator["shopType"] not in {"HOMME", "FEMME"}:
+                raise InvoiceError(403, "Aucun salon n'est assigné à ce compte")
+
+        providers = {}
+        for _, _, _, item_type, provider_id in item_values:
+            if not provider_id:
+                continue
+            if item_type != "SERVICE":
+                raise InvoiceError(400, "Un prestataire ne peut être attribué qu'à une prestation")
+            provider = connection.execute(
+                'SELECT id, name, shopType FROM "ServiceProvider" WHERE id = ?', (provider_id,)
+            ).fetchone()
+            if provider is None or provider["shopType"] != shop_type:
+                raise InvoiceError(400, "Ce prestataire n'appartient pas au salon de la facture")
+            providers[provider_id] = provider
 
         local_now = datetime.now().astimezone()
         date_prefix = local_now.strftime("%Y%m%d")
@@ -124,7 +155,6 @@ def create_invoice(print_store, body):
         created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         client_name = str(body.get("clientName") or "").strip() or None
         client_phone = str(body.get("clientPhone") or "").strip() or None
-        shop_type = str(body.get("shopType") or "FEMME").strip()
         delivery_address = str(body.get("deliveryAddress") or "").strip() or None
         delivery_fee = float(body.get("deliveryFee") or 0) if is_delivery else 0
         connection.execute(
@@ -152,11 +182,14 @@ def create_invoice(print_store, body):
         )
 
         invoice_items = []
-        for category_name, price, qty, item_type in item_values:
+        for category_name, price, qty, item_type, provider_id in item_values:
             item_id = str(uuid.uuid4())
+            provider_name = providers[provider_id]["name"] if provider_id else None
             connection.execute(
-                'INSERT INTO "InvoiceItem" (id, invoiceId, categoryName, price, qty, itemType) VALUES (?, ?, ?, ?, ?, ?)',
-                (item_id, invoice_id, category_name, price, qty, item_type),
+                '''INSERT INTO "InvoiceItem" (
+                       id, invoiceId, categoryName, price, qty, itemType, providerId, providerName
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (item_id, invoice_id, category_name, price, qty, item_type, provider_id, provider_name),
             )
             invoice_items.append({
                 "id": item_id,
@@ -165,6 +198,8 @@ def create_invoice(print_store, body):
                 "price": price,
                 "qty": qty,
                 "itemType": item_type,
+                "providerId": provider_id,
+                "providerName": provider_name,
             })
 
         invoice = {

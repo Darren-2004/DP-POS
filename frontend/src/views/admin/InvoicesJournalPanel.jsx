@@ -30,6 +30,10 @@ export default function InvoicesJournalPanel({
   fetchInvoices,
   filterDate,
   setFilterDate,
+  serviceProviders = [],
+  providerId = '',
+  setProviderId,
+  providerFilterError = '',
   users = [],
   shopType = null,
   currentUser,
@@ -49,9 +53,9 @@ export default function InvoicesJournalPanel({
 
   useEffect(() => {
     if (typeof fetchInvoices === 'function') {
-      fetchInvoices(filterDate, undefined, invoicePage);
+      fetchInvoices(filterDate, undefined, invoicePage, providerId);
     }
-  }, [fetchInvoices, filterDate, invoicePage]);
+  }, [fetchInvoices, filterDate, invoicePage, providerId]);
 
   const changeInvoiceDate = (date) => {
     if (typeof setInvoicePage === 'function') setInvoicePage(1);
@@ -63,6 +67,7 @@ export default function InvoicesJournalPanel({
   );
 
   const filteredInvoices = safeInvoices.filter((inv) => {
+    if (providerId && !inv.items?.some((item) => item.providerId === providerId)) return false;
     if (statusFilter !== 'ALL' && inv.status !== statusFilter) return false;
     if (methodFilter !== 'ALL' && !String(inv.paymentMethod || '').includes(methodFilter)) return false;
     if (!searchTerm.trim()) return true;
@@ -152,6 +157,31 @@ export default function InvoicesJournalPanel({
               Toutes les dates
             </button>
           </div>
+
+          {setProviderId && (
+            <div className="flex items-center gap-1.5 text-xs text-neutral-600">
+              <Filter className="h-3.5 w-3.5 text-neutral-400" />
+              <select
+                aria-label="Filtrer par prestataire"
+                value={providerId || ''}
+                onChange={(event) => {
+                  if (typeof setInvoicePage === 'function') setInvoicePage(1);
+                  setProviderId(event.target.value);
+                }}
+                className="rounded border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
+              >
+                <option value="">Tous les prestataires</option>
+                {serviceProviders
+                  .filter((provider) => !shopType || provider.shopType === shopType)
+                  .map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name} — {provider.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
+                    </option>
+                  ))}
+              </select>
+              {providerFilterError && <span className="text-[11px] text-rose-600">{providerFilterError}</span>}
+            </div>
+          )}
 
           {/* Status Filter */}
           <select
@@ -498,7 +528,12 @@ export default function InvoicesJournalPanel({
                         return (
                           <tr key={idx}>
                             <td className="py-2 pr-2 text-neutral-900 leading-snug">
-                              {item.categoryName || item.name || '—'}
+                              <div>{item.categoryName || item.name || '—'}</div>
+                              {item.providerName && (
+                                <div className="mt-0.5 text-[10px] text-neutral-500">
+                                  Prestataire : {item.providerName}
+                                </div>
+                              )}
                             </td>
                             <td className="py-2 text-center text-neutral-500">{qty}</td>
                             <td className="py-2 text-right text-neutral-500">{formatFCFA(price)}</td>

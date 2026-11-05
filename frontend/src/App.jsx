@@ -147,6 +147,19 @@ export default function App() {
     return () => window.removeEventListener('pos:toast', handleToast);
   }, []);
 
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setCurrentUser(null);
+      setCurrentView('login');
+      setActiveShop('ALL');
+      localStorage.removeItem('pos_user');
+      localStorage.removeItem('pos_view');
+      setToast({ message: 'Votre session a expiré. Veuillez vous reconnecter.', type: 'error' });
+    };
+    window.addEventListener('pos:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('pos:session-expired', handleSessionExpired);
+  }, []);
+
   const checkServerConnection = async () => {
     try {
       const res = await fetch(`${API_BASE}/heartbeat`);

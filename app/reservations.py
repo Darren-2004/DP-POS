@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from app.invoices import InvoiceError, _sync_client
 from app.queries import _local_day_bounds
 from app.print_jobs import UnknownStation
+from app.schema import ensure_schema
 
 
 class ReservationError(Exception):
@@ -59,7 +60,8 @@ def _reservation_response(connection, reservation_id, include_updated=False):
     result["items"] = [
         dict(item)
         for item in connection.execute(
-            'SELECT id, reservationId, categoryName, price, qty FROM "ReservationItem" WHERE reservationId = ?',
+            '''SELECT id, reservationId, categoryName, price, qty, providerId, providerName
+               FROM "ReservationItem" WHERE reservationId = ?''',
             (reservation_id,),
         ).fetchall()
     ]
@@ -127,7 +129,7 @@ def list_reservations(store, query):
         return [_reservation_response(connection, row["id"], include_updated=True) for row in rows]
 
 
-def create_reservation(store, body):
+def create_reservation(store, body, actor=None):
     client_name = str(body.get("clientName") or "").strip()
     created_by_id = body.get("createdById")
     if not client_name or not created_by_id:
@@ -142,11 +144,16 @@ def create_reservation(store, body):
 
     try:
         normalized_items = [
-            (str(item.get("categoryName") or service_name or "Prestation"), float(item.get("price") or 0), int(item.get("qty") or 1))
+            (
+                str(item.get("categoryName") or service_name or "Prestation"),
+                float(item.get("price") or 0),
+                int(item.get("qty") or 1),
+                str(item.get("providerId") or "").strip() or None,
+            )
             for item in raw_items
         ]
         if not total_amount and normalized_items:
-            total_amount = sum(price * qty for _, price, qty in normalized_items)
+            total_amount = sum(price * qty for _, price, qty, _ in normalized_items)
     except (KeyError, TypeError, ValueError):
         raise ReservationError(400, "Informations de réservation invalides") from None
 
@@ -159,7 +166,35 @@ def create_reservation(store, body):
 
     connection = store._open_connection()
     try:
+        ensure_schema(connection)
         connection.execute("BEGIN IMMEDIATE")
+        creator = connection.execute(
+            'SELECT id, role, shopType FROM "User" WHERE id = ?', (created_by_id,)
+        ).fetchone()
+        if creator is None:
+            raise ReservationError(400, "Caissier introuvable")
+        if creator["role"] in {"CASHIER", "MANAGER"} and creator["shopType"] in {"HOMME", "FEMME"}:
+            shop_type = creator["shopType"]
+        if shop_type not in {"HOMME", "FEMME"}:
+            raise ReservationError(400, "Salon invalide")
+
+        provider_ids = [provider_id for _, _, _, provider_id in normalized_items if provider_id]
+        if provider_ids:
+            if not actor or actor.get("id") != created_by_id:
+                raise ReservationError(401, "Authentification requise pour attribuer un prestataire")
+            if creator["role"] in {"CASHIER", "MANAGER"} and creator["shopType"] not in {"HOMME", "FEMME"}:
+                raise ReservationError(403, "Aucun salon n'est assigné à ce compte")
+        providers = {}
+        for _, _, _, provider_id in normalized_items:
+            if not provider_id:
+                continue
+            provider = connection.execute(
+                'SELECT id, name, shopType FROM "ServiceProvider" WHERE id = ?', (provider_id,)
+            ).fetchone()
+            if provider is None or provider["shopType"] != shop_type:
+                raise ReservationError(400, "Ce prestataire n'appartient pas au salon de la réservation")
+            providers[provider_id] = provider
+
         now = datetime.now(timezone.utc)
         reservation_id = str(uuid.uuid4())
         reservation_no = _reservation_number(connection, now)
@@ -177,11 +212,13 @@ def create_reservation(store, body):
                 shop_type, notes, total_amount, initial_amount, created_at, created_by_id, created_at
             ),
         )
-        for category_name, price, quantity in normalized_items:
+        for category_name, price, quantity, provider_id in normalized_items:
+            provider_name = providers[provider_id]["name"] if provider_id else None
             connection.execute(
-                '''INSERT INTO "ReservationItem" (id, reservationId, categoryName, price, qty)
-                   VALUES (?, ?, ?, ?, ?)''',
-                (str(uuid.uuid4()), reservation_id, category_name, price, quantity),
+                '''INSERT INTO "ReservationItem" (
+                       id, reservationId, categoryName, price, qty, providerId, providerName
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (str(uuid.uuid4()), reservation_id, category_name, price, quantity, provider_id, provider_name),
             )
 
         if initial_amount > 0:
@@ -244,7 +281,8 @@ def _invoice_from_connection(connection, invoice_id):
     result["items"] = [
         dict(item)
         for item in connection.execute(
-            '''SELECT id, invoiceId, categoryName, price, COALESCE(qty, 1) AS qty, COALESCE(itemType, 'SERVICE') AS itemType
+            '''SELECT id, invoiceId, categoryName, price, COALESCE(qty, 1) AS qty, COALESCE(itemType, 'SERVICE') AS itemType,
+                      providerId, providerName
                FROM "InvoiceItem" WHERE invoiceId = ?''', (invoice_id,)
         ).fetchall()
     ]
@@ -308,12 +346,19 @@ def _create_reservation_invoice_internal(connection, store, reservation_id, crea
             ),
         )
         reservation_items = connection.execute(
-            'SELECT categoryName, price, COALESCE(qty, 1) AS qty FROM "ReservationItem" WHERE reservationId = ?', (reservation_id,)
+            '''SELECT categoryName, price, COALESCE(qty, 1) AS qty, providerId, providerName
+               FROM "ReservationItem" WHERE reservationId = ?''',
+            (reservation_id,),
         ).fetchall()
         for item in reservation_items:
             connection.execute(
-                'INSERT INTO "InvoiceItem" (id, invoiceId, categoryName, price, qty, itemType) VALUES (?, ?, ?, ?, ?, ?)',
-                (str(uuid.uuid4()), invoice_id, item["categoryName"], item["price"], item["qty"], "SERVICE"),
+                '''INSERT INTO "InvoiceItem" (
+                       id, invoiceId, categoryName, price, qty, itemType, providerId, providerName
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (
+                    str(uuid.uuid4()), invoice_id, item["categoryName"], item["price"], item["qty"],
+                    "SERVICE", item["providerId"], item["providerName"],
+                ),
             )
         connection.execute(
             'UPDATE "Reservation" SET status = \'COMPLETED\', updatedAt = ? WHERE id = ?',

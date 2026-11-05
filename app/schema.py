@@ -25,6 +25,12 @@ TABLES = {
         price REAL NOT NULL DEFAULT 0,
         UNIQUE(name, categoryId)
     )''',
+    "ServiceProvider": '''CREATE TABLE IF NOT EXISTS "ServiceProvider" (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        shopType TEXT NOT NULL CHECK (shopType IN ('HOMME', 'FEMME')),
+        createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )''',
     "Product": '''CREATE TABLE IF NOT EXISTS "Product" (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -89,7 +95,9 @@ TABLES = {
         reservationId TEXT NOT NULL REFERENCES "Reservation"(id) ON DELETE CASCADE,
         categoryName TEXT NOT NULL,
         price REAL NOT NULL,
-        qty INTEGER NOT NULL DEFAULT 1
+        qty INTEGER NOT NULL DEFAULT 1,
+        providerId TEXT,
+        providerName TEXT
     )''',
     "ReservationPayment": '''CREATE TABLE IF NOT EXISTS "ReservationPayment" (
         id TEXT PRIMARY KEY,
@@ -159,6 +167,8 @@ ADDITIVE_COLUMNS = {
         "categoryName": "TEXT",
         "price": "REAL NOT NULL DEFAULT 0",
         "qty": "INTEGER NOT NULL DEFAULT 1",
+        "providerId": "TEXT",
+        "providerName": "TEXT",
     },
     "ReservationPayment": {
         "reservationId": "TEXT",
@@ -189,6 +199,8 @@ ADDITIVE_COLUMNS = {
     "InvoiceItem": {
         "qty": "INTEGER NOT NULL DEFAULT 1",
         "itemType": "TEXT NOT NULL DEFAULT 'SERVICE'",
+        "providerId": "TEXT",
+        "providerName": "TEXT",
     },
 }
 
@@ -203,6 +215,8 @@ INDEXES = (
     'CREATE UNIQUE INDEX IF NOT EXISTS SubCategory_name_categoryId_key ON "SubCategory"(name, categoryId)',
     'CREATE INDEX IF NOT EXISTS Invoice_createdAt_status_idx ON "Invoice"(createdAt, status)',
     'CREATE INDEX IF NOT EXISTS InvoiceItem_invoiceId_idx ON "InvoiceItem"(invoiceId)',
+    'CREATE INDEX IF NOT EXISTS InvoiceItem_providerId_idx ON "InvoiceItem"(providerId)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS ServiceProvider_shopType_name_key ON "ServiceProvider"(shopType, name)',
     'CREATE INDEX IF NOT EXISTS Reservation_createdAt_status_idx ON "Reservation"(createdAt, status)',
     'CREATE INDEX IF NOT EXISTS Reservation_scheduledAt_idx ON "Reservation"(scheduledAt)',
     'CREATE INDEX IF NOT EXISTS ReservationPayment_createdAt_idx ON "ReservationPayment"(createdAt)',

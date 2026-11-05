@@ -1,17 +1,36 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Modal from '../../components/Modal';
 import Field from '../../components/Field';
 import ConfirmModal from '../../components/ConfirmModal';
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '../../components/DesignSystem';
 import { Trash2, Pencil, Plus, Scissors, Check, X } from 'lucide-react';
 import { API_BASE } from '../../utils/constants';
-import { showToast, formatFCFA } from '../../utils/helpers';
+import { apiFetch, showToast, formatFCFA } from '../../utils/helpers';
 import { useShopNames } from '../../components/ShopNamesContext';
 
 const underlineInputCls =
   'w-full border-0 border-b border-neutral-200 bg-transparent py-1.5 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none';
 
-export default function Categories({ categories = [], fetchCategories, loading = false, error = '', isManager = false, managerShopType = null }) {
+const readProviderResponse = async (response) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const body = await response.text();
+    if (response.status === 404 || /<!doctype html|<html[\s>]/i.test(body)) {
+      throw new Error(
+        'La route des prestataires est introuvable sur le serveur. Déploie puis redémarre le backend POS pour appliquer la mise à jour.'
+      );
+    }
+    throw new Error(`Réponse inattendue du serveur (HTTP ${response.status}).`);
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || data.detail || `Erreur serveur (HTTP ${response.status}).`);
+  }
+  return data;
+};
+
+export default function Categories({ categories = [], fetchCategories, loading = false, error = '', isManager = false, managerShopType = null, currentUser }) {
   const { shopNames } = useShopNames();
   const isShopManager = isManager;
   const [showCreateCat, setShowCreateCat] = useState(false);
@@ -31,8 +50,100 @@ export default function Categories({ categories = [], fetchCategories, loading =
   const [editSubName, setEditSubName] = useState('');
   const [editSubPrice, setEditSubPrice] = useState('');
   const [pendingDeleteSub, setPendingDeleteSub] = useState(null);
+  const [serviceProviders, setServiceProviders] = useState([]);
+  const [providersError, setProvidersError] = useState('');
+  const [newProviderName, setNewProviderName] = useState('');
+  const [newProviderShop, setNewProviderShop] = useState('HOMME');
+  const [pendingDeleteProvider, setPendingDeleteProvider] = useState(null);
+  const [editingProviderId, setEditingProviderId] = useState(null);
+  const [editProviderName, setEditProviderName] = useState('');
+  const [editProviderShop, setEditProviderShop] = useState('HOMME');
 
   const [isSaving, setIsSaving] = useState(false);
+  const isAdmin = currentUser?.role === 'ADMIN';
+
+  const fetchServiceProviders = useCallback(async () => {
+    if (!isAdmin) return;
+    setProvidersError('');
+    try {
+      const res = await apiFetch(`${API_BASE}/service-providers`);
+      const data = await readProviderResponse(res);
+      setServiceProviders(Array.isArray(data) ? data : []);
+    } catch (fetchError) {
+      setProvidersError(fetchError.message || 'Erreur réseau lors du chargement des prestataires.');
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    fetchServiceProviders();
+  }, [fetchServiceProviders]);
+
+  const createServiceProvider = async () => {
+    const name = newProviderName.trim();
+    if (!name) {
+      showToast('Le nom du prestataire est requis.', 'error');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/service-providers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, shopType: newProviderShop }),
+      });
+      await readProviderResponse(res);
+      setNewProviderName('');
+      await fetchServiceProviders();
+      showToast('Prestataire créé.', 'success');
+    } catch (createError) {
+      showToast(createError.message || 'Erreur réseau lors de la création.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveServiceProvider = async () => {
+    const name = editProviderName.trim();
+    if (!editingProviderId || !name) {
+      showToast('Le nom du prestataire est requis.', 'error');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/service-providers/${editingProviderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, shopType: editProviderShop }),
+      });
+      const updatedProvider = await readProviderResponse(res);
+      setServiceProviders((previous) =>
+        previous.map((provider) => provider.id === updatedProvider.id ? updatedProvider : provider)
+          .sort((a, b) => a.shopType.localeCompare(b.shopType) || a.name.localeCompare(b.name))
+      );
+      setEditingProviderId(null);
+      showToast('Prestataire mis à jour.', 'success');
+    } catch (updateError) {
+      showToast(updateError.message || 'Erreur réseau lors de la modification.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteServiceProvider = async () => {
+    if (!pendingDeleteProvider) return;
+    setIsSaving(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/service-providers/${pendingDeleteProvider.id}`, { method: 'DELETE' });
+      await readProviderResponse(res);
+      setServiceProviders((previous) => previous.filter((provider) => provider.id !== pendingDeleteProvider.id));
+      showToast('Prestataire supprimé. Les tickets existants conservent son nom.', 'success');
+    } catch (deleteError) {
+      showToast(deleteError.message || 'Erreur réseau lors de la suppression.', 'error');
+    } finally {
+      setPendingDeleteProvider(null);
+      setIsSaving(false);
+    }
+  };
 
   // --- Category CRUD ---
   const createCategory = async () => {
@@ -220,6 +331,125 @@ export default function Categories({ categories = [], fetchCategories, loading =
           </button>
         }
       />
+
+      {isAdmin && (
+        <section className="space-y-4 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
+          <div>
+            <h2 className="text-sm font-bold text-neutral-900">Prestataires par salon</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Les caissiers ne verront que les prestataires de leur salon. Leur nom reste dans le détail des anciens tickets.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-[220px] flex-1 text-xs font-medium text-neutral-600">
+              Nom du prestataire
+              <input
+                type="text"
+                maxLength={100}
+                value={newProviderName}
+                onChange={(e) => setNewProviderName(e.target.value)}
+                className="mt-1 w-full rounded border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
+              />
+            </label>
+            <label className="text-xs font-medium text-neutral-600">
+              Salon
+              <select
+                value={newProviderShop}
+                onChange={(e) => setNewProviderShop(e.target.value)}
+                className="mt-1 block rounded border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
+              >
+                <option value="HOMME">{shopNames.HOMME}</option>
+                <option value="FEMME">{shopNames.FEMME}</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={createServiceProvider}
+              disabled={isSaving}
+              className="rounded bg-[#b38059] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#9e6d47] disabled:opacity-50"
+            >
+              Ajouter un prestataire
+            </button>
+          </div>
+          {providersError && <p role="alert" className="text-xs text-red-700">{providersError}</p>}
+          {serviceProviders.length ? (
+            <ul className="divide-y divide-neutral-200 border-y border-neutral-200">
+              {serviceProviders.map((provider) => (
+                <li key={provider.id} className="flex items-center justify-between gap-3 py-2 text-xs">
+                  {editingProviderId === provider.id ? (
+                    <>
+                      <input
+                        type="text"
+                        maxLength={100}
+                        aria-label="Nom du prestataire"
+                        value={editProviderName}
+                        onChange={(e) => setEditProviderName(e.target.value)}
+                        className="min-w-0 flex-1 rounded border border-neutral-300 bg-white px-2 py-1.5 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
+                      />
+                      <select
+                        aria-label="Salon du prestataire"
+                        value={editProviderShop}
+                        onChange={(e) => setEditProviderShop(e.target.value)}
+                        className="rounded border border-neutral-300 bg-white px-2 py-1.5 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
+                      >
+                        <option value="HOMME">{shopNames.HOMME}</option>
+                        <option value="FEMME">{shopNames.FEMME}</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={saveServiceProvider}
+                        disabled={isSaving}
+                        className="rounded bg-[#b38059] px-2.5 py-1.5 font-semibold text-white disabled:opacity-50"
+                      >
+                        Enregistrer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingProviderId(null)}
+                        disabled={isSaving}
+                        className="rounded border border-neutral-300 px-2.5 py-1.5 text-neutral-600 disabled:opacity-50"
+                      >
+                        Annuler
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium text-neutral-900">{provider.name}</span>
+                      <span className="ml-auto text-neutral-500">
+                        {provider.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingProviderId(provider.id);
+                          setEditProviderName(provider.name);
+                          setEditProviderShop(provider.shopType);
+                        }}
+                        className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
+                        aria-label={`Modifier ${provider.name}`}
+                        title="Modifier le nom ou le salon"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeleteProvider(provider)}
+                        className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                        aria-label={`Supprimer ${provider.name}`}
+                        title="Supprimer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : !providersError ? (
+            <p className="text-xs text-neutral-500">Aucun prestataire enregistré.</p>
+          ) : null}
+        </section>
+      )}
 
       {loading && categories.length === 0 ? (
         <LoadingState label="Chargement des prestations..." rows={4} className="border-0 bg-transparent p-0" />
@@ -490,6 +720,15 @@ export default function Categories({ categories = [], fetchCategories, loading =
         confirmText="Supprimer"
         onConfirm={confirmDeleteSubCategory}
         onCancel={() => setPendingDeleteSub(null)}
+      />
+
+      <ConfirmModal
+        open={Boolean(pendingDeleteProvider)}
+        title="Supprimer le prestataire"
+        message={`Voulez-vous supprimer "${pendingDeleteProvider?.name}" ? Les tickets déjà enregistrés garderont son nom.`}
+        confirmText="Supprimer"
+        onConfirm={deleteServiceProvider}
+        onCancel={() => setPendingDeleteProvider(null)}
       />
     </div>
   );

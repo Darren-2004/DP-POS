@@ -23,13 +23,20 @@ export const cx = (...classes) => classes.filter(Boolean).join(' ');
 
 export const apiFetch = (input, init = {}) => {
   const headers = new Headers(init.headers || {});
+  let hasAuthorization = false;
   try {
     const user = JSON.parse(localStorage.getItem('pos_user') || 'null');
     if (user?.accessToken) headers.set('Authorization', `Bearer ${user.accessToken}`);
   } catch {
     // Missing or malformed local session data should not prevent public requests.
   }
-  return fetch(input, { ...init, headers });
+  hasAuthorization = headers.has('Authorization');
+  return fetch(input, { ...init, headers }).then((response) => {
+    if (response.status === 401 && hasAuthorization && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pos:session-expired'));
+    }
+    return response;
+  });
 };
 
 export const getTodayDateStr = (dateObj = new Date()) => {
@@ -139,7 +146,7 @@ export const renderBeautyFooter = (extraNote = '') => `
     ${extraNote ? `<div style="font-size:7.5pt;font-weight:700;color:#000;margin-bottom:4px;line-height:1.3;">${extraNote}</div>` : ''}
     <div style="font-size:8pt;font-weight:700;color:#000;margin-bottom:2px;">✦ Merci de votre visite &amp; à très bientôt ! ✦</div>
     <div style="font-size:7.5pt;color:#000;font-weight:600;margin-bottom:3px;">Révélez votre beauté chez Dimitri Perfect</div>
-    <div style="font-size:7pt;color:#000;font-weight:600;margin-bottom:4px;line-height:1.25;">La référence et l'excellence en terme de qualité de service et prestation</div>
+    <div style="font-size:7pt;color:#000;font-weight:600;margin-bottom:4px;line-height:1.25;">La référence par excellence en terme de qualité de service et prestation</div>
   </div>
 `;
 

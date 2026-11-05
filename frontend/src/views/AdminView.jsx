@@ -14,7 +14,7 @@ import {
   ChevronRight,
   TrendingUp,
 } from 'lucide-react';
-import { getTodayDateStr, cx } from '../utils/helpers';
+import { apiFetch, getTodayDateStr, cx } from '../utils/helpers';
 import Dashboard from './admin/Dashboard';
 import Users from './admin/Users';
 import CategoriesView from './admin/Categories';
@@ -45,6 +45,10 @@ export default function AdminView({
   const assignedManagerShop = users.find((user) => user.id === currentUser?.id)?.shopType;
   const [adminTab, setAdminTab] = useState(isAdmin ? 'global' : 'dashboard');
   const [stats, setStats] = useState({ today: {}, week: {}, month: {} });
+  const [serviceProviders, setServiceProviders] = useState([]);
+  const [providerFilterError, setProviderFilterError] = useState('');
+  const [dashboardProviderId, setDashboardProviderId] = useState('');
+  const [invoiceProviderId, setInvoiceProviderId] = useState('');
 
   const currentShopType = isManager
     ? (['HOMME', 'FEMME'].includes(assignedManagerShop) ? assignedManagerShop : currentUser.shopType)
@@ -74,6 +78,33 @@ export default function AdminView({
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const fetchIdRef = useRef(0);
 
+  useEffect(() => {
+    let active = true;
+    if (!isAdmin) return undefined;
+    const fetchServiceProviders = async () => {
+      try {
+        const response = await apiFetch(`${API_BASE}/service-providers`);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || data.error || `Erreur serveur (HTTP ${response.status}).`);
+        }
+        if (active) {
+          setServiceProviders(Array.isArray(data) ? data : []);
+          setProviderFilterError('');
+        }
+      } catch (error) {
+        if (active) {
+          setServiceProviders([]);
+          setProviderFilterError(error.message || 'Impossible de charger la liste des prestataires.');
+        }
+      }
+    };
+    fetchServiceProviders();
+    return () => {
+      active = false;
+    };
+  }, [isAdmin]);
+
   const refreshDashboardData = useCallback(async (
     startDate = filterStartDate,
     endDate = filterEndDate,
@@ -98,6 +129,7 @@ export default function AdminView({
       }
       if (cashierId) params.append('cashierId', cashierId);
       if (currentShopType) params.append('shopType', currentShopType);
+      if (dashboardProviderId) params.append('providerId', dashboardProviderId);
       const reservationParams = new URLSearchParams();
       if (reservationFilterDate) reservationParams.append('date', reservationFilterDate);
       if (cashierId) reservationParams.append('cashierId', cashierId);
@@ -159,14 +191,15 @@ export default function AdminView({
     } finally {
       if (fetchId === fetchIdRef.current) setDashboardLoading(false);
     }
-  }, [filterStartDate, filterEndDate, filterCashier, reservationFilterDate, invoicePage, isManager, currentShopType, adminTab]);
+  }, [filterStartDate, filterEndDate, filterCashier, reservationFilterDate, invoicePage, isManager, currentShopType, adminTab, dashboardProviderId]);
 
-  const fetchInvoices = useCallback(async (date = filterDate, cashierId = filterCashier, page = invoicePage) => {
+  const fetchInvoices = useCallback(async (date = filterDate, cashierId = filterCashier, page = invoicePage, providerId = invoiceProviderId) => {
     try {
       const params = new URLSearchParams();
       if (date) params.append('date', date);
       if (cashierId) params.append('cashierId', cashierId);
       if (currentShopType) params.append('shopType', currentShopType);
+      if (providerId) params.append('providerId', providerId);
       params.append('page', String(page));
       params.append('pageSize', '50');
       const res = await fetch(`${API_BASE}/invoices?${params.toString()}`);
@@ -190,7 +223,7 @@ export default function AdminView({
     } catch {
       // Ignore
     }
-  }, [filterDate, filterCashier, invoicePage, currentShopType]);
+  }, [filterDate, filterCashier, invoicePage, currentShopType, invoiceProviderId]);
 
   useEffect(() => {
     refreshDashboardData();
@@ -372,6 +405,11 @@ export default function AdminView({
             setFilterCashier={setFilterCashier}
             loading={dashboardLoading}
             shopType={currentShopType}
+            userRole={currentUser?.role}
+            serviceProviders={serviceProviders}
+            providerId={dashboardProviderId}
+            setProviderId={isAdmin ? setDashboardProviderId : undefined}
+            providerFilterError={providerFilterError}
             onScopeChange={isAdmin ? (scope) => {
               if (scope === 'global') setAdminTab('global');
               else if (scope === 'shop1') setAdminTab('shop1');
@@ -390,6 +428,10 @@ export default function AdminView({
             fetchInvoices={fetchInvoices}
             filterDate={filterDate}
             setFilterDate={setFilterDate}
+            serviceProviders={serviceProviders}
+            providerId={invoiceProviderId}
+            setProviderId={isAdmin ? setInvoiceProviderId : undefined}
+            providerFilterError={providerFilterError}
             users={users}
             shopType={currentShopType}
             currentUser={currentUser}
@@ -410,6 +452,7 @@ export default function AdminView({
             error={categoriesError}
             isManager={isManager}
             managerShopType={currentShopType}
+            currentUser={currentUser}
           />
         )}
 

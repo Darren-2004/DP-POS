@@ -72,10 +72,15 @@ export default function CashierInvoicesView({ currentUser }) {
   const groupInvoiceItems = (items = []) => {
     const map = {};
     items.forEach(item => {
-      const key = `${item.categoryName}||${item.price}`;
+      const key = `${item.categoryName}||${item.price}||${item.providerId || item.providerName || ''}`;
       const qty = Number(item.qty || 1);
       if (!map[key]) {
-        map[key] = { categoryName: item.categoryName, price: item.price, qty: 0 };
+        map[key] = {
+          categoryName: item.categoryName,
+          price: item.price,
+          qty: 0,
+          providerName: item.providerName,
+        };
       }
       map[key].qty += qty;
     });
@@ -357,7 +362,14 @@ export default function CashierInvoicesView({ currentUser }) {
                   <tbody className="divide-y divide-neutral-200">
                     {groupInvoiceItems(selectedInvoice.items).map((item, idx) => (
                       <tr key={idx}>
-                        <td className="py-2 text-neutral-900">{item.categoryName}</td>
+                        <td className="py-2 text-neutral-900">
+                          <div>{item.categoryName}</div>
+                          {item.providerName && (
+                            <div className="mt-0.5 text-[10px] text-neutral-500">
+                              Prestataire : {item.providerName}
+                            </div>
+                          )}
+                        </td>
                         <td className="py-2 text-center text-neutral-500">{item.qty}</td>
                         <td className="py-2 text-right text-neutral-500">{formatFCFA(item.price)}</td>
                         <td className="py-2 text-right font-bold text-[#b38059]">{formatFCFA(item.price * item.qty)}</td>

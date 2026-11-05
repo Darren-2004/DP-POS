@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp,
   Banknote,
@@ -13,13 +13,14 @@ import {
   ArrowDownRight,
   Minus,
 } from 'lucide-react';
-import { PageHeader, LoadingState } from '../../components/DesignSystem';
-import { formatFCFA, getTodayDateStr } from '../../utils/helpers';
+import { EmptyState, ErrorState, PageHeader, LoadingState } from '../../components/DesignSystem';
+import { apiFetch, formatFCFA, getTodayDateStr } from '../../utils/helpers';
 import DualLineChart from '../../components/charts/DualLineChart';
 import DonutChart from '../../components/charts/DonutChart';
 import HorizontalBarChart from '../../components/charts/HorizontalBarChart';
 import DateRangeFilter from '../../components/DateRangeFilter';
 import { useShopNames } from '../../components/ShopNamesContext';
+import { API_BASE } from '../../utils/constants';
 
 export default function Dashboard({
   stats = {},
@@ -35,10 +36,99 @@ export default function Dashboard({
   setFilterCashier,
   loading = false,
   shopType = null,
+  userRole = '',
   onScopeChange,
+  serviceProviders = [],
+  providerId = '',
+  setProviderId,
+  providerFilterError = '',
 }) {
   const { shopNames } = useShopNames();
   const [comparisonPeriod, setComparisonPeriod] = useState('months'); // 'months' or 'week'
+  const [providerRankingStats, setProviderRankingStats] = useState(null);
+  const [providerRankingLoading, setProviderRankingLoading] = useState(false);
+  const [providerRankingError, setProviderRankingError] = useState('');
+  const [providerRankingRefresh, setProviderRankingRefresh] = useState(0);
+  const [dashboardInsights, setDashboardInsights] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState('');
+  const [insightsRefresh, setInsightsRefresh] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    if (!['ADMIN', 'MANAGER'].includes(userRole)) return undefined;
+
+    const fetchInsights = async () => {
+      setInsightsLoading(true);
+      setInsightsError('');
+      const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.set('startDate', startDate);
+        params.set('endDate', endDate);
+      }
+      if (shopType) params.set('shopType', shopType);
+      try {
+        const response = await apiFetch(`${API_BASE}/dashboard-insights?${params.toString()}`);
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(`Réponse inattendue du serveur (HTTP ${response.status}).`);
+        }
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || data.error || `Erreur serveur (HTTP ${response.status}).`);
+        }
+        if (active) setDashboardInsights(data);
+      } catch (error) {
+        if (active) setInsightsError(error.message || 'Impossible de charger les indicateurs du tableau de bord.');
+      } finally {
+        if (active) setInsightsLoading(false);
+      }
+    };
+
+    fetchInsights();
+    return () => {
+      active = false;
+    };
+  }, [startDate, endDate, shopType, userRole, insightsRefresh]);
+
+  useEffect(() => {
+    let active = true;
+    if (!setProviderId || providerId) {
+      setProviderRankingLoading(false);
+      setProviderRankingError('');
+      return undefined;
+    }
+
+    const fetchProviderRankings = async () => {
+      setProviderRankingLoading(true);
+      setProviderRankingError('');
+      const params = new URLSearchParams();
+      if (shopType) params.set('shopType', shopType);
+      try {
+        const response = await apiFetch(`${API_BASE}/service-provider-stats?${params.toString()}`);
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(`Réponse inattendue du serveur (HTTP ${response.status}).`);
+        }
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || data.error || `Erreur serveur (HTTP ${response.status}).`);
+        }
+        if (active) setProviderRankingStats(data);
+      } catch (error) {
+        if (active) {
+          setProviderRankingError(error.message || 'Impossible de charger les classements des prestataires.');
+        }
+      } finally {
+        if (active) setProviderRankingLoading(false);
+      }
+    };
+
+    fetchProviderRankings();
+    return () => {
+      active = false;
+    };
+  }, [providerId, providerRankingRefresh, setProviderId, shopType]);
 
   const isAllDates = !startDate || !endDate;
   const periodLabel = isAllDates ? 'toutes les dates' : startDate === endDate ? `du ${startDate}` : `du ${startDate} au ${endDate}`;
@@ -210,7 +300,17 @@ export default function Dashboard({
   const topServices = analytics.topServices || categoryBreakdown.slice(0, 10);
   const topProducts = analytics.topProducts || [];
   const ratios = analytics.ratios || {};
-
+  const monthlyTrendData = (dashboardInsights?.monthlyTrends || []).map((month) => ({
+    label: month.month,
+    shop1: Number(month.shop1Revenue) || 0,
+    shop2: Number(month.shop2Revenue) || 0,
+    total: Number(month.total) || 0,
+  }));
+  const staffPerformance = dashboardInsights?.staffPerformance || [];
+  const providerPerformance = dashboardInsights?.providerPerformance || [];
+  const dailyOperations = dashboardInsights?.dailyOperations || {};
+  const followUpClients = dashboardInsights?.followUpClients || [];
+  const upcomingAppointments = dashboardInsights?.upcomingAppointments || [];
   return (
     <div className="space-y-6 bg-white pb-12">
       {/* Colored Header Banner (No Gradient) */}
@@ -275,6 +375,27 @@ export default function Dashboard({
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+          {setProviderId && (
+            <div className="flex items-center gap-2">
+              <Scissors className="h-4 w-4 text-neutral-500" />
+              <span className="font-semibold text-neutral-700">Prestataire :</span>
+              <select
+                value={providerId || ''}
+                onChange={(event) => setProviderId(event.target.value)}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 outline-none focus:border-[#b38059]"
+              >
+                <option value="">Tous les prestataires</option>
+                {serviceProviders
+                  .filter((provider) => !shopType || provider.shopType === shopType)
+                  .map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name} — {provider.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
+                    </option>
+                  ))}
+              </select>
+              {providerFilterError && <span className="text-[11px] text-rose-600">{providerFilterError}</span>}
             </div>
           )}
         </div>
@@ -613,6 +734,300 @@ export default function Dashboard({
           />
         </div>
       </div>
+
+      {userRole === 'ADMIN' && (
+        <section className="space-y-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-neutral-900">Vue d’ensemble de l’équipe et tendances du réseau</h2>
+              <p className="mt-1 text-xs text-neutral-500">
+                Activité de l’équipe sur {periodLabel}; évolution mensuelle du chiffre d’affaires de l’année en cours.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setInsightsRefresh((value) => value + 1)}
+              disabled={insightsLoading}
+              className="rounded border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              Actualiser
+            </button>
+          </div>
+          {insightsLoading ? (
+            <LoadingState label="Chargement des tendances et performances de l’équipe..." rows={2} />
+          ) : insightsError ? (
+            <ErrorState
+              title="Vue d’ensemble indisponible"
+              description={insightsError}
+              onRetry={() => setInsightsRefresh((value) => value + 1)}
+            />
+          ) : (
+            <>
+              <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
+                <h3 className="mb-1 text-xs font-bold text-neutral-900">Tendance mensuelle du chiffre d’affaires</h3>
+                <p className="mb-4 text-xs text-neutral-500">{new Date().getFullYear()} — comparaison des deux salons</p>
+                <DualLineChart
+                  data={monthlyTrendData}
+                  height={260}
+                  series1Key="shop1"
+                  series2Key="shop2"
+                  series1Label={shopNames.HOMME}
+                  series2Label={shopNames.FEMME}
+                  series1Color="#b38059"
+                  series2Color="#2563eb"
+                  labelKey="label"
+                />
+              </div>
+              <div className="grid gap-5 xl:grid-cols-2">
+                <RankingTable
+                  title="Équipe — ventes par caissier / gérant"
+                  rows={staffPerformance}
+                  shopNames={shopNames}
+                  emptyMessage="Aucune vente validée sur cette période."
+                />
+                <RankingTable
+                  title="Prestataires — prestations attribuées"
+                  rows={providerPerformance}
+                  shopNames={shopNames}
+                  emptyMessage="Aucune prestation attribuée sur cette période."
+                  providerRows
+                />
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {userRole === 'MANAGER' && (
+        <section className="space-y-5">
+          <div>
+            <h2 className="text-sm font-bold text-neutral-900">Opérations quotidiennes et suivi de votre équipe</h2>
+            <p className="mt-1 text-xs text-neutral-500">{activeShopLabel} — activité du jour et suivi client.</p>
+          </div>
+          {insightsLoading ? (
+            <LoadingState label="Chargement des opérations et du suivi client..." rows={2} />
+          ) : insightsError ? (
+            <ErrorState
+              title="Données opérationnelles indisponibles"
+              description={insightsError}
+              onRetry={() => setInsightsRefresh((value) => value + 1)}
+            />
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard title="Ventes aujourd’hui" value={formatFCFA(dailyOperations.revenue)} />
+                <MetricCard title="Tickets aujourd’hui" value={dailyOperations.invoiceCount || 0} />
+                <MetricCard title="Rendez-vous aujourd’hui" value={dailyOperations.appointmentsToday || 0} />
+                <MetricCard title="Rendez-vous à confirmer" value={dailyOperations.pendingAppointmentsToday || 0} />
+              </div>
+              <div className="grid gap-5 xl:grid-cols-2">
+                <RankingTable
+                  title="Performance des caissiers"
+                  rows={staffPerformance}
+                  shopNames={shopNames}
+                  emptyMessage="Aucune vente validée sur cette période."
+                />
+                <RankingTable
+                  title="Performance des prestataires"
+                  rows={providerPerformance}
+                  shopNames={shopNames}
+                  emptyMessage="Aucune prestation attribuée sur cette période."
+                  providerRows
+                />
+              </div>
+              <div className="grid gap-5 xl:grid-cols-2">
+                <FollowUpTable
+                  title="Rendez-vous des 7 prochains jours"
+                  rows={upcomingAppointments}
+                  emptyMessage="Aucun rendez-vous prévu dans les 7 prochains jours."
+                  appointmentRows
+                />
+                <FollowUpTable
+                  title={`Clients à recontacter (sans visite depuis ${dashboardInsights?.followUpThresholdDays || 60} jours)`}
+                  rows={followUpClients}
+                  emptyMessage="Aucun client à recontacter pour le moment."
+                />
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {!providerId && setProviderId && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm font-bold text-neutral-900">Classement des prestataires</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Top 10 sur toutes les dates{shopType ? ` — ${shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}` : ' — tous les salons'}.
+            </p>
+          </div>
+
+          {providerRankingLoading ? (
+            <LoadingState label="Chargement des classements prestataires..." rows={2} />
+          ) : providerRankingError ? (
+            <ErrorState
+              title="Classements prestataires indisponibles"
+              description={providerRankingError}
+              onRetry={() => setProviderRankingRefresh((value) => value + 1)}
+            />
+          ) : (
+            <div className="grid gap-5 xl:grid-cols-2">
+              <ProviderRankingTable
+                title="Top 10 — nombre de prestations réalisées"
+                providers={providerRankingStats?.topByCount || []}
+                shopNames={shopNames}
+                metricLabel="Prestations"
+                metric={(provider) => provider.serviceCount}
+                formatMetric={(value) => `${value} prestation${value === 1 ? '' : 's'}`}
+              />
+              <ProviderRankingTable
+                title="Top 10 — chiffre d’affaires attribué"
+                providers={providerRankingStats?.topByRevenue || []}
+                shopNames={shopNames}
+                metricLabel="CA total"
+                metric={(provider) => provider.revenue}
+                formatMetric={formatFCFA}
+              />
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({ title, value }) {
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-xs">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{title}</p>
+      <p className="mt-1 text-xl font-bold text-neutral-900">{value}</p>
+    </div>
+  );
+}
+
+function RankingTable({ title, rows, shopNames, emptyMessage, providerRows = false }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xs">
+      <h3 className="border-b border-neutral-100 px-4 py-3 text-xs font-bold text-neutral-900">{title}</h3>
+      {!rows.length ? (
+        <EmptyState title="Aucune donnée" description={emptyMessage} className="min-h-28 border-0 py-4" />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[440px] text-left text-xs">
+            <thead className="border-b border-neutral-200 bg-neutral-50 text-neutral-600">
+              <tr>
+                <th className="px-3 py-2.5">Nom</th>
+                <th className="px-3 py-2.5">Salon</th>
+                <th className="px-3 py-2.5 text-right">{providerRows ? 'Prestations' : 'Tickets'}</th>
+                <th className="px-3 py-2.5 text-right">Chiffre d’affaires</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {rows.slice(0, 10).map((row) => (
+                <tr key={`${row.id}-${row.shopType}`}>
+                  <td className="px-3 py-2.5 font-semibold text-neutral-900">
+                    {row.name}{!providerRows && row.role ? ` (${row.role === 'MANAGER' ? 'Gérant' : 'Caissier'})` : ''}
+                  </td>
+                  <td className="px-3 py-2.5 text-neutral-600">
+                    {row.shopType === 'HOMME' ? shopNames.HOMME : row.shopType === 'FEMME' ? shopNames.FEMME : 'Réseau'}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-neutral-700">
+                    {providerRows ? row.serviceCount : row.invoiceCount}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#b38059]">{formatFCFA(row.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FollowUpTable({ title, rows, emptyMessage, appointmentRows = false }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xs">
+      <h3 className="border-b border-neutral-100 px-4 py-3 text-xs font-bold text-neutral-900">{title}</h3>
+      {!rows.length ? (
+        <EmptyState title="Rien à signaler" description={emptyMessage} className="min-h-28 border-0 py-4" />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-left text-xs">
+            <thead className="border-b border-neutral-200 bg-neutral-50 text-neutral-600">
+              <tr>
+                <th className="px-3 py-2.5">Client</th>
+                <th className="px-3 py-2.5">Téléphone</th>
+                <th className="px-3 py-2.5">{appointmentRows ? 'Rendez-vous' : 'Dernière visite'}</th>
+                {appointmentRows && <th className="px-3 py-2.5">Prestation</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {rows.slice(0, 20).map((row) => (
+                <tr key={row.id || `${row.name}-${row.lastPurchaseAt}`}>
+                  <td className="px-3 py-2.5 font-semibold text-neutral-900">{row.clientName || row.name}</td>
+                  <td className="px-3 py-2.5 text-neutral-600">{row.clientPhone || row.phone || '—'}</td>
+                  <td className="px-3 py-2.5 text-neutral-600">
+                    {appointmentRows
+                      ? new Date(row.scheduledAt || `${row.bookingDate || ''}T${row.bookingTime || '00:00'}`).toLocaleString('fr-FR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : `${row.daysSincePurchase} j`}
+                  </td>
+                  {appointmentRows && <td className="px-3 py-2.5 text-neutral-600">{row.serviceName || '—'}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProviderRankingTable({ title, providers, shopNames, metricLabel, metric, formatMetric }) {
+  const topProviders = providers.slice(0, 10);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xs">
+      <h3 className="border-b border-neutral-100 px-4 py-3 text-xs font-bold text-neutral-900">{title}</h3>
+      {topProviders.length === 0 ? (
+        <EmptyState
+          title="Aucune prestation attribuée"
+          description="Les factures validées avec un prestataire apparaîtront ici."
+          className="min-h-28 border-0 py-4"
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-left text-xs">
+            <thead className="border-b border-neutral-200 bg-neutral-50 text-neutral-600">
+              <tr>
+                <th className="px-3 py-2.5">#</th>
+                <th className="px-3 py-2.5">Prestataire</th>
+                <th className="px-3 py-2.5">Salon</th>
+                <th className="px-3 py-2.5 text-right">{metricLabel}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {topProviders.map((provider, index) => (
+                <tr key={`${provider.id}-${provider.shopType}`}>
+                  <td className="px-3 py-2.5 font-semibold text-neutral-400">{index + 1}</td>
+                  <td className="px-3 py-2.5 font-semibold text-neutral-900">{provider.name}</td>
+                  <td className="px-3 py-2.5 text-neutral-600">
+                    {provider.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-bold tabular-nums text-[#b38059]">
+                    {formatMetric(metric(provider))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

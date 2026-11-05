@@ -11,9 +11,13 @@ export default function CheckoutWorkspace({
   onRetryCategories,
   products = [],
   productsLoading = false,
+  serviceProviders = [],
+  providersLoading = false,
+  providersError = '',
   cart = [],
   handleAddItemToCart,
   handleUpdateCartField,
+  handleUpdateCartProvider,
   handleRemoveFromCart,
   handleClearCart,
   getCartTotal,
@@ -268,16 +272,40 @@ export default function CheckoutWorkspace({
                     <tr key={item.id} className="group align-middle hover:bg-neutral-50">
                       {/* Designation */}
                       <td className="py-2 pl-4 pr-2">
-                        <div className="flex items-center gap-2">
-                          <span className="shrink-0 text-[10px] font-semibold text-neutral-400">
-                            {isProduct ? 'STOCK' : 'SOIN'}
-                          </span>
-                          <input
-                            type="text"
-                            value={item.categoryName}
-                            onChange={(e) => handleUpdateCartField(item.id, 'categoryName', e.target.value)}
-                            className="w-full border-0 border-b border-transparent bg-transparent font-medium text-neutral-900 outline-none focus:border-neutral-900"
-                          />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="shrink-0 text-[10px] font-semibold text-neutral-400">
+                              {isProduct ? 'STOCK' : 'SOIN'}
+                            </span>
+                            <input
+                              type="text"
+                              value={item.categoryName}
+                              onChange={(e) => handleUpdateCartField(item.id, 'categoryName', e.target.value)}
+                              className="w-full border-0 border-b border-transparent bg-transparent font-medium text-neutral-900 outline-none focus:border-neutral-900"
+                            />
+                          </div>
+                          {!isProduct && (
+                            <select
+                              aria-label={`Prestataire pour ${item.categoryName}`}
+                              value={item.providerId || ''}
+                              onChange={(e) => handleUpdateCartProvider(item.id, e.target.value)}
+                              disabled={providersLoading || Boolean(providersError) || serviceProviders.length === 0}
+                              className="ml-12 max-w-[calc(100%-3rem)] rounded border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-600 disabled:bg-neutral-50 disabled:text-neutral-400"
+                            >
+                              <option value="">
+                                {providersLoading
+                                  ? 'Chargement des prestataires...'
+                                  : providersError
+                                    ? 'Prestataires indisponibles'
+                                    : serviceProviders.length
+                                      ? 'Choisir un prestataire (facultatif)'
+                                      : 'Aucun prestataire pour ce salon'}
+                              </option>
+                              {serviceProviders.map((provider) => (
+                                <option key={provider.id} value={provider.id}>{provider.name}</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       </td>
 
