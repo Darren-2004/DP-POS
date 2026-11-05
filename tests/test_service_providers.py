@@ -241,6 +241,46 @@ class ServiceProviderApiTests(unittest.TestCase):
             provider["id"],
         )
 
+    def test_provider_statistics_follow_selected_date_range(self):
+        provider = self._create_provider("Aminata", "HOMME")
+        invoice_ids = []
+        for amount, quantity in ((1000, 1), (2500, 2)):
+            response = self.client.post(
+                "/api/invoices",
+                headers=self.homme_headers,
+                json={
+                    "totalAmount": amount,
+                    "createdById": "cashier-h",
+                    "items": [{
+                        "categoryName": "Coupe",
+                        "price": amount / quantity,
+                        "qty": quantity,
+                        "providerId": provider["id"],
+                    }],
+                },
+            )
+            self.assertEqual(response.status_code, 201)
+            invoice_ids.append(response.json()["id"])
+
+        with self.store._connect() as connection:
+            connection.execute(
+                'UPDATE "Invoice" SET createdAt = ? WHERE id = ?',
+                ("2025-01-06T10:00:00.000Z", invoice_ids[0]),
+            )
+            connection.execute(
+                'UPDATE "Invoice" SET createdAt = ? WHERE id = ?',
+                ("2025-01-12T10:00:00.000Z", invoice_ids[1]),
+            )
+
+        response = self.client.get(
+            "/api/service-provider-stats?shopType=HOMME&startDate=2025-01-06&endDate=2025-01-12",
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["topByCount"][0]["serviceCount"], 3)
+        self.assertEqual(response.json()["topByRevenue"][0]["revenue"], 3500)
+
     def test_reservation_provider_is_preserved_in_final_invoice(self):
         provider = self._create_provider("Aminata", "HOMME")
         response = self.client.post(

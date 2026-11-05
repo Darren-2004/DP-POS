@@ -103,6 +103,10 @@ export default function Dashboard({
       setProviderRankingLoading(true);
       setProviderRankingError('');
       const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.set('startDate', startDate);
+        params.set('endDate', endDate);
+      }
       if (shopType) params.set('shopType', shopType);
       try {
         const response = await apiFetch(`${API_BASE}/service-provider-stats?${params.toString()}`);
@@ -128,7 +132,7 @@ export default function Dashboard({
     return () => {
       active = false;
     };
-  }, [providerId, providerRankingRefresh, setProviderId, shopType]);
+  }, [startDate, endDate, providerId, providerRankingRefresh, setProviderId, shopType]);
 
   const isAllDates = !startDate || !endDate;
   const periodLabel = isAllDates ? 'toutes les dates' : startDate === endDate ? `du ${startDate}` : `du ${startDate} au ${endDate}`;
@@ -858,7 +862,7 @@ export default function Dashboard({
           <div>
             <h2 className="text-sm font-bold text-neutral-900">Classement des prestataires</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              Top 10 sur toutes les dates{shopType ? ` — ${shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}` : ' — tous les salons'}.
+              Top 10 {periodLabel}{shopType ? ` — ${shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}` : ' — tous les salons'}.
             </p>
           </div>
 
