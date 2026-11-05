@@ -147,7 +147,7 @@ export default function LoginView({
         return;
       }
 
-      localStorage.setItem('pos_user', JSON.stringify(data));
+      sessionStorage.setItem('pos_user', JSON.stringify(data));
       setCurrentUser(data);
       setCurrentView(data.role === 'CASHIER' ? 'cashier' : 'admin');
     } catch {
@@ -189,7 +189,7 @@ export default function LoginView({
       }
 
       const authenticatedUser = { ...selectedUser, needsPinReset: false, accessToken };
-      localStorage.setItem('pos_user', JSON.stringify(authenticatedUser));
+      sessionStorage.setItem('pos_user', JSON.stringify(authenticatedUser));
       setCurrentUser(authenticatedUser);
       setCurrentView(selectedUser.role === 'CASHIER' ? 'cashier' : 'admin');
     } catch {

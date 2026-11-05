@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart2, DollarSign, CreditCard, Calendar, Receipt, Eye, Printer, X, Sparkles, Clock, ChevronDown, CheckCircle2 } from 'lucide-react';
-import { formatFCFA, getTodayDateStr, cx, getPaymentMethodLabel, triggerPrint, isReservationInvoice } from '../utils/helpers';
+import { apiFetch, formatFCFA, getTodayDateStr, cx, getPaymentMethodLabel, triggerPrint, isReservationInvoice } from '../utils/helpers';
 import { API_BASE } from '../utils/constants';
 import { EmptyState, ErrorState, LoadingState } from './DesignSystem';
 import { useShopNames } from './ShopNamesContext';
@@ -17,6 +17,7 @@ export default function CashierStatsView({ currentUser }) {
 
   const [invoices, setInvoices] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [reservationPayments, setReservationPayments] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [onlyMyOps, setOnlyMyOps] = useState(currentUser?.role === 'CASHIER');
 
@@ -70,7 +71,7 @@ export default function CashierStatsView({ currentUser }) {
       const cashierParam = onlyMyOps ? `cashierId=${currentUser.id}` : '';
       const dateParams = (startDateStr && endDateStr) ? `startDate=${startDateStr}&endDate=${endDateStr}` : '';
       const queryStr = [dateParams, cashierParam].filter(Boolean).join('&');
-      const res = await fetch(`${API_BASE}/stats${queryStr ? '?' + queryStr : ''}`);
+      const res = await apiFetch(`${API_BASE}/stats${queryStr ? '?' + queryStr : ''}`);
       if (res.ok) {
         const data = await res.json();
         const s = (startDateStr && endDateStr) ? (data.filtered || data.today) : (data.today || data.filtered);
@@ -93,26 +94,30 @@ export default function CashierStatsView({ currentUser }) {
       const dateParams = (startDateStr && endDateStr) ? `startDate=${startDateStr}&endDate=${endDateStr}` : '';
       const baseQuery = [dateParams, cashierParam].filter(Boolean).join('&');
 
-      const [invRes, resRes] = await Promise.all([
-        fetch(`${API_BASE}/invoices?${baseQuery}`),
-        fetch(`${API_BASE}/reservations?${baseQuery}`)
+      const [invRes, resRes, paymentRes] = await Promise.all([
+        apiFetch(`${API_BASE}/invoices?${baseQuery}`),
+        fetch(`${API_BASE}/reservations?${baseQuery}`),
+        fetch(`${API_BASE}/reservation-payments?${baseQuery}`),
       ]);
-      if (invRes.ok) {
-        const invData = await invRes.json();
-        const list = Array.isArray(invData) ? invData : invData.items || [];
-        setInvoices(list);
+      if (!invRes.ok || !resRes.ok || !paymentRes.ok) {
+        throw new Error('Une ou plusieurs listes de caisse sont indisponibles.');
       }
-      if (resRes.ok) {
-        const resData = await resRes.json();
-        setReservations(Array.isArray(resData) ? resData : []);
-      }
-    } catch {
-      // Ignore
+      const [invData, resData, paymentData] = await Promise.all([
+        invRes.json(),
+        resRes.json(),
+        paymentRes.json(),
+      ]);
+      setInvoices(Array.isArray(invData) ? invData : invData.items || []);
+      setReservations(Array.isArray(resData) ? resData : []);
+      setReservationPayments(Array.isArray(paymentData) ? paymentData : []);
+    } catch (error) {
+      console.error('Fetch cashier report details error:', error);
+      setLoadError('Erreur réseau lors du chargement des détails de caisse.');
     }
   };
 
   const directSalesInvoices = invoices.filter(inv => !isReservationInvoice(inv));
-  const reservationInvoices = invoices.filter(inv => isReservationInvoice(inv));
+  const allOperationsCount = invoices.length + reservationPayments.length;
 
   // Direct accurate calculation from invoices array to guarantee numbers are NEVER zero
   let calcCash = 0;
@@ -150,12 +155,11 @@ export default function CashierStatsView({ currentUser }) {
     }
   });
 
-  // Effective values: prioritizing calculated values from real loaded transactions, or stats response
-  const totalInvoiced = calcTotal > 0 ? calcTotal : (stats?.total || stats?.totalSales || 0);
-  const cashVal = calcCash > 0 ? calcCash : (stats?.cash ?? stats?.payments?.CASH ?? 0);
-  const onlineVal = calcOnline > 0 ? calcOnline : (stats?.online ?? stats?.payments?.ONLINE ?? 0);
-  const orangeVal = calcOrange > 0 ? calcOrange : (stats?.orangeMoney ?? stats?.payments?.ORANGE_MONEY ?? 0);
-  const validatedCount = calcValidatedCount > 0 ? calcValidatedCount : (stats?.count || stats?.validatedCount || 0);
+  const totalCollected = stats?.total ?? stats?.totalSales ?? calcTotal;
+  const cashVal = stats?.cash ?? stats?.payments?.CASH ?? calcCash;
+  const onlineVal = stats?.online ?? stats?.payments?.ONLINE ?? calcOnline;
+  const orangeVal = stats?.orangeMoney ?? stats?.payments?.ORANGE_MONEY ?? calcOrange;
+  const validatedCount = stats?.count ?? stats?.validatedCount ?? calcValidatedCount;
   const cancelledCount = calcCancelledCount > 0 ? calcCancelledCount : (stats?.cancelledCount || 0);
 
   return (
@@ -238,7 +242,7 @@ export default function CashierStatsView({ currentUser }) {
         {/* Total Invoiced */}
         <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-xs">
           <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Total Encaissé</div>
-          <div className="mt-1.5 text-2xl font-extrabold text-[#b38059] tabular-nums">{formatFCFA(totalInvoiced)}</div>
+          <div className="mt-1.5 text-2xl font-extrabold text-[#b38059] tabular-nums">{formatFCFA(totalCollected)}</div>
           <div className="mt-1 text-[11px] font-medium text-neutral-600">{validatedCount} prestation{validatedCount > 1 ? 's' : ''} validée{validatedCount > 1 ? 's' : ''}</div>
         </div>
 
@@ -273,7 +277,7 @@ export default function CashierStatsView({ currentUser }) {
             activeFilterTab === 'ALL' ? 'bg-[#b38059] text-white shadow-xs' : 'text-neutral-600 hover:bg-neutral-100'
           )}
         >
-          Tous les actes ({invoices.length})
+          Tous les actes ({allOperationsCount})
         </button>
         <button
           onClick={() => setActiveFilterTab('DIRECT')}
@@ -291,7 +295,7 @@ export default function CashierStatsView({ currentUser }) {
             activeFilterTab === 'RESERVATIONS' ? 'bg-[#b38059] text-white shadow-xs' : 'text-neutral-600 hover:bg-neutral-100'
           )}
         >
-          Rendez-vous ({reservations.length})
+          Rendez-vous ({reservations.length + reservationPayments.length})
         </button>
       </div>
 
@@ -345,6 +349,41 @@ export default function CashierStatsView({ currentUser }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
+                {reservationPayments.map((payment) => (
+                  <tr key={`payment-${payment.id}`} className="bg-emerald-50/40 hover:bg-emerald-50 transition">
+                    <td className="px-4 py-2.5">
+                      <div className="font-mono font-bold text-[#b38059]">{payment.reservation?.reservationNo}</div>
+                      <div className="text-[10px] font-semibold text-emerald-700">
+                        Reçu d’acompte · Tranche {payment.installmentNumber || 1}/3
+                      </div>
+                      <div className="text-[10px] text-neutral-500">{payment.reservation?.serviceName || 'Réservation'}</div>
+                    </td>
+                    <td className="px-4 py-2.5 font-semibold text-neutral-900">
+                      {payment.reservation?.clientName || 'Client'}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={cx(
+                        'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border',
+                        payment.reservation?.shopType === 'HOMME' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-neutral-100 text-neutral-800 border-neutral-200'
+                      )}>
+                        {payment.reservation?.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-right text-neutral-500">
+                      {formatFCFA(payment.reservation?.totalAmount)}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono font-bold text-right text-emerald-700">
+                      {formatFCFA(payment.amount)}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="font-semibold text-emerald-700">Acompte encaissé</div>
+                      <div className="text-[10px] text-neutral-500">
+                        {payment.createdAt ? new Date(payment.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                        {' · '}{getPaymentMethodLabel(payment.paymentMethod)}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
                 {reservations.map((res) => {
                   const paid = (res.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
                   return (

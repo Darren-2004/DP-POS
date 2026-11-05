@@ -125,9 +125,114 @@ def _localized_date(value):
         return str(value or "")
 
 
+def _render_training_payment_receipt(payment):
+    remaining = float(payment.get("remainingAfter") or 0)
+    lines = [
+        "\x1ba\x01\x1bE\x01\x1d!\x11DIMITRI PERFECT\x1d!\x00\x1bE\x00",
+        "RECU DE PAIEMENT FORMATION",
+        "\x1ba\x00",
+        "-" * 48,
+        _key_value("N Recu:", payment.get("paymentNumber") or ""),
+        _key_value("Date:", _localized_date(payment.get("createdAt"))),
+        _key_value("Apprenant:", payment.get("studentName") or ""),
+        _key_value("Telephone:", payment.get("studentPhone") or ""),
+        _key_value("Formation:", payment.get("courseName") or ""),
+        _key_value("Shop:", payment.get("shopName") or payment.get("shopType") or ""),
+        _key_value("Enregistre par:", (payment.get("createdBy") or {}).get("name") or ""),
+        _key_value("Mode de paiement:", _payment_label(payment.get("paymentMethod"))),
+        "-" * 48,
+        _key_value("Tranche numero:", payment.get("installmentNumber") or 1),
+        "\x1bE\x01" + _key_value("PAYE CE JOUR:", f"{_amount(payment.get('amount'))} FCFA") + "\x1bE\x00",
+        _key_value("Prix formation:", f"{_amount(payment.get('coursePrice'))} FCFA"),
+        _key_value("Total paye:", f"{_amount(payment.get('totalPaidAfter'))} FCFA"),
+        _key_value("SOLDE RESTANT:", f"{_amount(remaining)} FCFA"),
+        "-" * 48,
+        "Conservez ce recu comme justificatif.",
+        "",
+        "Fait Par TriSpark Digital",
+    ] + [""] * BOTTOM_BLANK_LINES
+    return _encode_escpos_lines(lines)
+
+
+def _encode_escpos_lines(lines):
+    text = "\n".join(lines) + "\n"
+    text_clean = "".join(
+        character for character in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(character)
+    )
+    return b"\x1b@\x1bt\x10" + text_clean.encode("ascii", errors="replace") + CUT_COMMAND
+
+
+def _render_escpos_z_report(invoice):
+    report = invoice.get("zReport") or {}
+    lines = [
+        "\x1ba\x01\x1bE\x01\x1d!\x11DIMITRI PERFECT\x1d!\x00\x1bE\x00",
+        "RAPPORT DE CLOTURE (Z)",
+        "\x1ba\x00",
+        "-" * 48,
+        _key_value("Periode:", report.get("date") or report.get("periodLabel") or ""),
+        _key_value("Heure:", report.get("time") or ""),
+        _key_value("Operateur:", report.get("cashierName") or "Admin"),
+    ]
+    shop_reports = report.get("shopReports") or [report]
+    grand_total = 0.0
+    for shop_report in shop_reports:
+        payments = shop_report.get("payments") or {}
+        shop_total = float(shop_report.get("totalSales", shop_report.get("total")) or 0)
+        grand_total += shop_total
+        lines.extend([
+            "-" * 48,
+            str(shop_report.get("shopName") or shop_report.get("shopType") or "SALON").upper(),
+            _key_value("TOTAL ENCAISSE:", f"{_amount(shop_total)} FCFA"),
+            _key_value("Especes:", f"{_amount(payments.get('CASH'))} FCFA"),
+            _key_value("Mobile Money:", f"{_amount(payments.get('ONLINE'))} FCFA"),
+            _key_value("Orange Money:", f"{_amount(payments.get('ORANGE_MONEY'))} FCFA"),
+            _key_value("Factures validees:", shop_report.get("validatedCount", shop_report.get("count", 0))),
+            _key_value("Acomptes reservation:", shop_report.get("resPaymentCount", 0)),
+            _key_value("Paiements formation:", shop_report.get("trainingPaymentCount", 0)),
+            _key_value("Total formations:", f"{_amount(shop_report.get('trainingTotal'))} FCFA"),
+            _key_value("Tickets annules:", shop_report.get("cancelledCount", 0)),
+        ])
+        providers = shop_report.get("serviceProviders") or []
+        if providers:
+            lines.extend(["-" * 48, "PERFORMANCE DES PRESTATAIRES"])
+        total_services = 0
+        total_revenue = 0.0
+        for provider in providers:
+            service_count = int(provider.get("serviceCount") or 0)
+            revenue = float(provider.get("revenue") or 0)
+            total_services += service_count
+            total_revenue += revenue
+            lines.append(str(provider.get("name") or "Prestataire")[:48])
+            lines.append(_key_value(f"{service_count} prestation(s)", f"{_amount(revenue)} FCFA"))
+        if providers:
+            lines.append("-" * 48)
+            lines.append(_key_value(f"TOTAL {total_services} PRESTATION(S):", f"{_amount(total_revenue)} FCFA"))
+
+        categories = shop_report.get("topSelling") or []
+        if categories:
+            lines.extend(["-" * 48, "REPARTITION PAR CATEGORIE"])
+            for category in categories:
+                lines.append(_key_value(
+                    f"{str(category.get('name') or '')[:24]} x{category.get('quantity') or 0}",
+                    f"{_amount(category.get('revenue'))} FCFA",
+                ))
+
+    if len(shop_reports) > 1:
+        lines.extend(["-" * 48, "\x1bE\x01" + _key_value("TOTAL RESEAU:", f"{_amount(grand_total)} FCFA") + "\x1bE\x00"])
+    lines.extend(["-" * 48, "FIN DU RAPPORT DE CLOTURE Z"])
+    if len(lines) > MAX_RECEIPT_LINES:
+        lines = lines[:MAX_RECEIPT_LINES - 1] + ["Details supplementaires non imprimes"]
+    return _encode_escpos_lines(lines)
+
+
 def render_escpos_receipt(payload):
     reservation = payload.get("reservation")
     invoice = payload.get("invoiceData") or reservation or {}
+    if invoice.get("isZReport"):
+        return _render_escpos_z_report(invoice)
+    if invoice.get("isTrainingPayment"):
+        return _render_training_payment_receipt(invoice)
     is_test_page = bool(payload.get("testPage"))
     is_delivery = bool(invoice.get("isDelivery"))
     lines = [
@@ -244,14 +349,7 @@ def render_escpos_receipt(payload):
         if physical_line_count(lines) > MAX_RECEIPT_LINES:
             lines = lines[:MAX_RECEIPT_LINES]
 
-    text = "\n".join(lines) + "\n"
-    # Supprimer tous les accents pour eviter les caracteres speciaux/chinois sur les imprimantes thermiques
-    text_clean = "".join(
-        c for c in unicodedata.normalize("NFKD", text)
-        if not unicodedata.combining(c)
-    )
-    encoded = text_clean.encode("ascii", errors="replace")
-    return b"\x1b@\x1bt\x10" + encoded + CUT_COMMAND
+    return _encode_escpos_lines(lines)
 
 
 def send_json(base_url, path, token, body=None, method="GET"):

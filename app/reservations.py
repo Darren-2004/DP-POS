@@ -626,7 +626,8 @@ def reservation_payments(store, query):
     where = " AND ".join(clauses)
     with store._connect() as connection:
         rows = connection.execute(
-            f'''SELECT p.*, r.reservationNo, r.clientName, u.name AS creatorName
+            f'''SELECT p.*, r.reservationNo, r.clientName, r.shopType,
+                       r.totalAmount, r.serviceName, u.name AS creatorName
                 FROM "ReservationPayment" p
                 JOIN "Reservation" r ON r.id = p.reservationId
                 LEFT JOIN "User" u ON u.id = p.createdById
@@ -638,8 +639,17 @@ def reservation_payments(store, query):
         payment = dict(row)
         reservation_no = payment.pop("reservationNo")
         client_name = payment.pop("clientName")
+        shop_type = payment.pop("shopType")
+        total_amount = payment.pop("totalAmount")
+        service_name = payment.pop("serviceName")
         creator_name = payment.pop("creatorName")
-        payment["reservation"] = {"reservationNo": reservation_no, "clientName": client_name}
+        payment["reservation"] = {
+            "reservationNo": reservation_no,
+            "clientName": client_name,
+            "shopType": shop_type,
+            "totalAmount": total_amount,
+            "serviceName": service_name,
+        }
         payment["createdBy"] = {"name": creator_name} if creator_name else None
         result.append(payment)
     return result

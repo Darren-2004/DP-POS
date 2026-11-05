@@ -149,6 +149,9 @@ class ReservationWorkflowTests(unittest.TestCase):
 
         self.assertEqual(filtered[0]["id"], self.reservation["id"])
         self.assertEqual(history[0]["reservation"]["reservationNo"], self.reservation["reservationNo"])
+        self.assertEqual(history[0]["reservation"]["shopType"], self.reservation["shopType"])
+        self.assertEqual(history[0]["reservation"]["totalAmount"], self.reservation["totalAmount"])
+        self.assertEqual(history[0]["reservation"]["serviceName"], self.reservation["serviceName"])
         self.assertEqual(history[0]["createdBy"]["name"], "Amina")
 
     def test_final_invoice_is_idempotent_and_contains_payment_history(self):

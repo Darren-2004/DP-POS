@@ -191,6 +191,11 @@ def create_invoice(print_store, body, actor=None):
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                 (item_id, invoice_id, category_name, price, qty, item_type, provider_id, provider_name),
             )
+            if item_type == "PRODUCT":
+                connection.execute(
+                    'UPDATE "Product" SET stockQty = MAX(0, stockQty - ?) WHERE name = ?',
+                    (qty, category_name),
+                )
             invoice_items.append({
                 "id": item_id,
                 "invoiceId": invoice_id,
@@ -254,30 +259,63 @@ def create_invoice(print_store, body, actor=None):
     return invoice
 
 
-def cancel_invoice(print_store, invoice_id, admin_id, admin_pin, cancellation_reason):
-    if not admin_id or not admin_pin or not cancellation_reason:
+def cancel_invoice(print_store, invoice_id, actor, pin, cancellation_reason, shop_type=None):
+    reason = str(cancellation_reason or "").strip()
+    if not isinstance(actor, dict) or not actor.get("id"):
+        raise InvoiceError(401, "Authentification requise")
+    if actor.get("role") not in {"ADMIN", "MANAGER"}:
+        raise InvoiceError(403, "Seul un administrateur ou un gérant peut annuler une facture")
+    if actor["role"] == "MANAGER" and shop_type not in {"HOMME", "FEMME"}:
+        raise InvoiceError(403, "Aucun shop n'est assigné à ce gérant")
+    if not str(pin or "").strip() or not reason:
+        if actor["role"] == "MANAGER":
+            raise InvoiceError(400, "Veuillez saisir le code PIN du gérant et le motif d'annulation.")
         raise InvoiceError(400, "Veuillez saisir le code PIN administrateur et le motif d'annulation.")
 
     connection = print_store._open_connection()
     try:
         connection.execute("BEGIN IMMEDIATE")
-        admin = connection.execute(
-            'SELECT id, pin, role FROM "User" WHERE id = ?', (admin_id,)
+        user = connection.execute(
+            'SELECT pin, role FROM "User" WHERE id = ?', (actor["id"],)
         ).fetchone()
-        if admin is None or admin["role"] not in {"ADMIN", "MANAGER"}:
-            raise InvoiceError(403, "Seul un administrateur ou un gérant peut annuler une facture")
+        if user is None or user["role"] != actor["role"]:
+            raise InvoiceError(401, "Le compte connecté est introuvable ou a changé de rôle")
         from app.auth import verify_pin
-        if not verify_pin(str(admin_pin), admin["pin"]):
+        if not verify_pin(str(pin).strip(), user["pin"]):
+            if actor["role"] == "MANAGER":
+                raise InvoiceError(401, "Code PIN du gérant connecté incorrect")
             raise InvoiceError(401, "Code PIN administrateur incorrect")
-        invoice = connection.execute('SELECT status FROM "Invoice" WHERE id = ?', (invoice_id,)).fetchone()
+        invoice = connection.execute(
+            'SELECT status, shopType FROM "Invoice" WHERE id = ?', (invoice_id,)
+        ).fetchone()
         if invoice is None:
             raise InvoiceError(404, "Facture non trouvée")
+        if actor["role"] == "MANAGER" and invoice["shopType"] != shop_type:
+            raise InvoiceError(403, "Cette facture ne fait pas partie de votre shop")
         if invoice["status"] == "CANCELLED":
             raise InvoiceError(400, "Cette facture est déjà annulée")
+        columns = {
+            row["name"] for row in connection.execute('PRAGMA table_info("Invoice")')
+        }
+        cancelled_at_update = ", cancelledAt = ?" if "cancelledAt" in columns else ""
+        parameters = ["CANCELLED", reason, actor["id"]]
+        if cancelled_at_update:
+            parameters.append(datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"))
+        parameters.append(invoice_id)
         connection.execute(
-            'UPDATE "Invoice" SET status = ?, cancellationReason = ?, cancelledById = ? WHERE id = ?',
-            ("CANCELLED", cancellation_reason, admin_id, invoice_id),
+            f'''UPDATE "Invoice" SET status = ?, cancellationReason = ?, cancelledById = ?
+                {cancelled_at_update} WHERE id = ?''',
+            parameters,
         )
+        product_items = connection.execute(
+            'SELECT categoryName, qty FROM "InvoiceItem" WHERE invoiceId = ? AND itemType = \'PRODUCT\'',
+            (invoice_id,),
+        ).fetchall()
+        for p_item in product_items:
+            connection.execute(
+                'UPDATE "Product" SET stockQty = stockQty + ? WHERE name = ?',
+                (int(p_item["qty"] or 1), p_item["categoryName"]),
+            )
         updated = get_invoice_with_relations(connection, invoice_id)
         connection.commit()
         return updated

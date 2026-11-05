@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, User, Phone, Plus, Scissors, CheckCircle, XCircle, Printer, AlertCircle, Eye, CreditCard } from 'lucide-react';
 import Field, { inputCls } from './Field';
 import ClientAutocomplete from './ClientAutocomplete';
-import { formatFCFA, triggerPrint, triggerProformaPrint, triggerFinalReservationPrint, getTodayDateStr, cx, showToast } from '../utils/helpers';
+import { formatFCFA, triggerPrint, triggerProformaPrint, triggerFinalReservationPrint, getTodayDateStr, cx, showToast, getPrintMode } from '../utils/helpers';
 import { API_BASE } from '../utils/constants';
 import { useShopNames } from './ShopNamesContext';
 
@@ -172,7 +172,7 @@ export default function ReservationsView({
         notes: formNotes,
         createdById: currentUser?.id,
         initialPayment: advance > 0 ? { amount: advance, paymentMethod: formPaymentMethod } : null,
-        stationId: printStationId || undefined,
+        stationId: getPrintMode() === 'PRINT_AGENT' ? printStationId || undefined : undefined,
       };
 
       const res = await fetch(`${API_BASE}/reservations`, {
@@ -182,6 +182,8 @@ export default function ReservationsView({
       });
 
       if (res.ok) {
+        const reservation = await res.json();
+        if (advance > 0) triggerProformaPrint(reservation);
         showToast('Rendez-vous enregistré avec succès !', 'success');
         setShowAddModal(false);
         setFormClientName('');

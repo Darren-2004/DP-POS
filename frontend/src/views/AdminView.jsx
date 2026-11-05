@@ -13,6 +13,7 @@ import {
   Settings,
   ChevronRight,
   TrendingUp,
+  GraduationCap,
 } from 'lucide-react';
 import { apiFetch, getTodayDateStr, cx } from '../utils/helpers';
 import Dashboard from './admin/Dashboard';
@@ -25,6 +26,7 @@ import ClientsPanel from './admin/ClientsPanel';
 import ReservationsPanel from './admin/ReservationsPanel';
 import DevicesPanel from './admin/DevicesPanel';
 import SettingsPanel from './admin/SettingsPanel';
+import TrainingPanel from './admin/TrainingPanel';
 import { API_BASE } from '../utils/constants';
 import { useShopNames } from '../components/ShopNamesContext';
 
@@ -138,10 +140,10 @@ export default function AdminView({
       if (currentShopType) reservationParams.append('shopType', currentShopType);
 
       const [statsRes, invsRes, resPayRes, resRes] = await Promise.all([
-        fetch(`${API_BASE}/stats?${params.toString()}`),
+        apiFetch(`${API_BASE}/stats?${params.toString()}`),
         adminTab === 'invoices'
           ? Promise.resolve(null)
-          : fetch(
+          : apiFetch(
               `${API_BASE}/invoices?${new URLSearchParams({
                 ...Object.fromEntries(params),
                 page: String(page),
@@ -204,7 +206,7 @@ export default function AdminView({
       if (providerId) params.append('providerId', providerId);
       params.append('page', String(page));
       params.append('pageSize', '50');
-      const res = await fetch(`${API_BASE}/invoices?${params.toString()}`);
+      const res = await apiFetch(`${API_BASE}/invoices?${params.toString()}`);
       if (res.ok) {
         const responseData = await res.json();
         const data = Array.isArray(responseData) ? responseData : responseData.items;
@@ -253,7 +255,7 @@ export default function AdminView({
           title: 'CATALOGUE & STOCK',
           items: [
             { id: 'categories', label: 'Prestations & Tarifs', icon: <Scissors className="h-4 w-4" /> },
-            { id: 'products', label: 'Stock & Mèches', icon: <Package className="h-4 w-4" /> },
+            { id: 'products', label: 'Stock', icon: <Package className="h-4 w-4" /> },
           ],
         },
         {
@@ -261,6 +263,12 @@ export default function AdminView({
           items: [
             { id: 'reservations', label: 'Réservations & Planning', icon: <Calendar className="h-4 w-4" /> },
             { id: 'clients', label: 'Fichier Clients & Fidélité', icon: <UserCheck className="h-4 w-4" /> },
+          ],
+        },
+        {
+          title: 'FORMATION',
+          items: [
+            { id: 'training', label: 'Formations & apprenants', icon: <GraduationCap className="h-4 w-4" /> },
           ],
         },
         {
@@ -290,7 +298,7 @@ export default function AdminView({
           title: 'CATALOGUE & STOCK',
           items: [
             { id: 'categories', label: 'Prestations & Tarifs', icon: <Scissors className="h-4 w-4" /> },
-            { id: 'products', label: 'Stock & Mèches', icon: <Package className="h-4 w-4" /> },
+            { id: 'products', label: 'Stock', icon: <Package className="h-4 w-4" /> },
           ],
         },
         {
@@ -298,6 +306,12 @@ export default function AdminView({
           items: [
             { id: 'reservations', label: 'Réservations', icon: <Calendar className="h-4 w-4" /> },
             { id: 'clients', label: 'Clients', icon: <UserCheck className="h-4 w-4" /> },
+          ],
+        },
+        {
+          title: 'FORMATION',
+          items: [
+            { id: 'training', label: 'Formations & apprenants', icon: <GraduationCap className="h-4 w-4" /> },
           ],
         },
         {
@@ -484,6 +498,10 @@ export default function AdminView({
         {/* Clients & CRM */}
         {adminTab === 'clients' && (
           <ClientsPanel />
+        )}
+
+        {adminTab === 'training' && (
+          <TrainingPanel currentUser={currentUser} shopType={currentShopType} />
         )}
 
         {/* Users (Cashiers) */}

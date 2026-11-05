@@ -107,10 +107,32 @@ def _reservation_payment_rows(connection, bounds=None, cashier_id=None, all_time
     ).fetchall()
 
 
-def _stats_for_rows(invoices, payments, include_paid_delivery_count=True):
+def _training_payment_rows(connection, bounds=None, cashier_id=None, all_time=False, shop_type=None):
+    clauses = ["p.status = 'VALIDATED'"]
+    parameters = []
+    if bounds and not all_time:
+        clauses.append("p.createdAt BETWEEN ? AND ?")
+        parameters.extend(bounds)
+    if cashier_id:
+        clauses.append("p.createdById = ?")
+        parameters.append(cashier_id)
+    if shop_type in {"HOMME", "FEMME"}:
+        clauses.append("e.shopType = ?")
+        parameters.append(shop_type)
+    return connection.execute(
+        f'''SELECT p.*, e.shopType FROM "TrainingPayment" p
+            JOIN "TrainingEnrollment" e ON e.id = p.enrollmentId
+            WHERE {" AND ".join(clauses)}''',
+        parameters,
+    ).fetchall()
+
+
+def _stats_for_rows(invoices, payments, include_paid_delivery_count=True, training_payments=()):
     stats = {
         "total": 0.0, "cash": 0.0, "online": 0.0, "orangeMoney": 0.0,
         "count": 0, "reservationTotal": 0.0, "resPaymentsCount": len(payments),
+        "trainingTotal": 0.0, "trainingPaymentCount": len(training_payments),
+        "trainingByShop": {"HOMME": 0.0, "FEMME": 0.0},
         "directCount": 0, "deliveryCount": 0, "deliveryFeesTotal": 0.0,
         "deliveryTotalWithoutFees": 0.0, "deliveryTotalWithFees": 0.0,
         "directCash": 0.0, "directOnline": 0.0, "directOrange": 0.0,
@@ -167,6 +189,17 @@ def _stats_for_rows(invoices, payments, include_paid_delivery_count=True):
         stats["resOnline"] += breakdown["ONLINE"]
         stats["orangeMoney"] += breakdown["ORANGE_MONEY"]
         stats["resOrange"] += breakdown["ORANGE_MONEY"]
+    for payment in training_payments:
+        amount = float(payment["amount"] or 0)
+        stats["trainingTotal"] += amount
+        shop = str(payment["shopType"] or "").upper()
+        if shop in stats["trainingByShop"]:
+            stats["trainingByShop"][shop] += amount
+        stats["total"] += amount
+        breakdown = payment_method_breakdown(payment["paymentMethod"], amount)
+        stats["cash"] += breakdown["CASH"]
+        stats["online"] += breakdown["ONLINE"]
+        stats["orangeMoney"] += breakdown["ORANGE_MONEY"]
     return stats
 
 
@@ -247,6 +280,17 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
         m = payment_method_breakdown(p["paymentMethod"], amt)
         for k in payments_breakdown:
             payments_breakdown[k] += m[k]
+    training_payments = (
+        []
+        if provider_id
+        else _training_payment_rows(connection, bounds, cashier_id, all_time=all_time, shop_type=shop_type)
+    )
+    for payment in training_payments:
+        amount = float(payment["amount"] or 0)
+        total_sales += amount
+        method_totals = payment_method_breakdown(payment["paymentMethod"], amount)
+        for key in payments_breakdown:
+            payments_breakdown[key] += method_totals[key]
 
     is_single_day = False
     if "date" in query and query["date"]:
@@ -280,6 +324,15 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
                         hour_buckets[target_h]["shop2"] += amt
                 except Exception:
                     pass
+        for payment in training_payments:
+            if payment["createdAt"]:
+                try:
+                    dt = datetime.fromisoformat(payment["createdAt"].replace("Z", "+00:00")).astimezone()
+                    hour = max(8, min(22, dt.hour))
+                    hour_buckets[hour]["total"] += float(payment["amount"] or 0)
+                    hour_buckets[hour]["count"] += 1
+                except (TypeError, ValueError):
+                    pass
         for h in range(8, 23):
             timeline.append({
                 "label": f"{h:02d}h",
@@ -306,6 +359,21 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
                     else:
                         b["shop2"] += amt
                 except Exception:
+                    pass
+        for payment in training_payments:
+            if payment["createdAt"]:
+                try:
+                    dt = datetime.fromisoformat(payment["createdAt"].replace("Z", "+00:00")).astimezone()
+                    day = dt.strftime("%Y-%m-%d")
+                    bucket = date_buckets.setdefault(day, {"total": 0.0, "shop1": 0.0, "shop2": 0.0, "count": 0})
+                    amount = float(payment["amount"] or 0)
+                    bucket["total"] += amount
+                    bucket["count"] += 1
+                    if payment["shopType"] == "HOMME":
+                        bucket["shop1"] += amount
+                    else:
+                        bucket["shop2"] += amount
+                except (TypeError, ValueError):
                     pass
         sorted_dates = sorted(date_buckets.keys())
         for d in sorted_dates[-30:]:
@@ -525,7 +593,12 @@ def dashboard_stats(store, query):
                 if provider_id
                 else _reservation_payment_rows(connection, bounds, cashier_id, shop_type=shop_type)
             )
-            return _stats_for_rows(invoices, payments)
+            training_payments = (
+                []
+                if provider_id
+                else _training_payment_rows(connection, bounds, cashier_id, shop_type=shop_type)
+            )
+            return _stats_for_rows(invoices, payments, training_payments=training_payments)
 
         today = range_stats(today_bounds)
         yesterday = range_stats(yesterday_bounds)
@@ -548,7 +621,15 @@ def dashboard_stats(store, query):
                 if provider_id
                 else _reservation_payment_rows(connection, cashier_id=cashier_id, all_time=True, shop_type=shop_type)
             )
-            filtered = _stats_for_rows(invoices, payments, include_paid_delivery_count=False)
+            training_payments = (
+                []
+                if provider_id
+                else _training_payment_rows(connection, cashier_id=cashier_id, all_time=True, shop_type=shop_type)
+            )
+            filtered = _stats_for_rows(
+                invoices, payments, include_paid_delivery_count=False,
+                training_payments=training_payments,
+            )
 
         effective_bounds = filtered_bounds if filtered_bounds else today_bounds
         top_selling = _category_totals(
@@ -606,10 +687,22 @@ def z_report(store, query):
             (*bounds, cashier_id, cashier_id, shop_type, shop_type),
         ).fetchall()
         payments = _reservation_payment_rows(connection, bounds, cashier_id, shop_type=shop_type)
+        training_payments = _training_payment_rows(
+            connection, bounds, cashier_id, shop_type=shop_type
+        )
+        invoice_columns = {
+            row["name"] for row in connection.execute('PRAGMA table_info("Invoice")')
+        }
+        cancelled_at = (
+            "COALESCE(cancelledAt, createdAt)"
+            if "cancelledAt" in invoice_columns
+            else "createdAt"
+        )
         cancelled = connection.execute(
-            '''SELECT COUNT(*) FROM "Invoice" WHERE status = 'CANCELLED' AND createdAt BETWEEN ? AND ?
+            f'''SELECT COUNT(*) FROM "Invoice"
+                WHERE status = 'CANCELLED' AND {cancelled_at} BETWEEN ? AND ?
                     AND (? IS NULL OR createdById = ?) AND (? IS NULL OR shopType = ?)''',
-                (*bounds, cashier_id, cashier_id, shop_type, shop_type),
+            (*bounds, cashier_id, cashier_id, shop_type, shop_type),
         ).fetchone()[0]
 
         total = 0.0
@@ -630,6 +723,16 @@ def z_report(store, query):
             total += amount
             for key in breakdown:
                 breakdown[key] += payment_breakdown[key]
+        training_total = 0.0
+        training_breakdown = {"CASH": 0.0, "ONLINE": 0.0, "ORANGE_MONEY": 0.0}
+        for payment in training_payments:
+            amount = float(payment["amount"] or 0)
+            training_total += amount
+            payment_breakdown = payment_method_breakdown(payment["paymentMethod"], amount)
+            for key in breakdown:
+                breakdown[key] += payment_breakdown[key]
+                training_breakdown[key] += payment_breakdown[key]
+            total += amount
 
         top_selling = _category_totals(connection, bounds, cashier_id, shop_type=shop_type)
 
@@ -645,6 +748,9 @@ def z_report(store, query):
         "count": invoice_count,
         "validatedCount": invoice_count,
         "resPaymentCount": len(payments),
+        "trainingTotal": training_total,
+        "trainingPaymentCount": len(training_payments),
+        "trainingPayments": training_breakdown,
         "cancelledCount": cancelled,
         "payments": breakdown,
         "topSelling": top_selling,
@@ -822,6 +928,14 @@ def dashboard_insights(store, query, include_customer_follow_up=False):
                 WHERE {" AND ".join(trend_clauses)}''',
             trend_parameters,
         ).fetchall()
+        training_trend_rows = connection.execute(
+            '''SELECT p.createdAt, p.amount, e.shopType
+               FROM "TrainingPayment" p
+               JOIN "TrainingEnrollment" e ON e.id = p.enrollmentId
+               WHERE p.status = 'VALIDATED' AND p.createdAt BETWEEN ? AND ?
+                 AND (? IS NULL OR e.shopType = ?)''',
+            (*year_bounds, shop_type, shop_type),
+        ).fetchall()
 
         daily_invoices = connection.execute(
             f'''SELECT i.totalAmount, i.paymentMethod, i.isReservation, i.isDelivery,
@@ -830,8 +944,16 @@ def dashboard_insights(store, query, include_customer_follow_up=False):
                 WHERE {" AND ".join(daily_clauses)}''',
             daily_parameters,
         ).fetchall()
+        daily_training_payments = connection.execute(
+            '''SELECT p.amount, p.paymentMethod FROM "TrainingPayment" p
+               JOIN "TrainingEnrollment" e ON e.id = p.enrollmentId
+               WHERE p.status = 'VALIDATED' AND p.createdAt BETWEEN ? AND ?
+                 AND (? IS NULL OR e.shopType = ?)''',
+            (*today_bounds, shop_type, shop_type),
+        ).fetchall()
         daily_revenue = 0.0
         daily_invoice_count = 0
+        daily_training_payment_count = len(daily_training_payments)
         daily_payments = {"CASH": 0.0, "ONLINE": 0.0, "ORANGE_MONEY": 0.0}
         for row in daily_invoices:
             if row["isReservation"]:
@@ -844,6 +966,12 @@ def dashboard_insights(store, query, include_customer_follow_up=False):
             daily_invoice_count += 1
             daily_revenue += amount
             breakdown = payment_method_breakdown(row["paymentMethod"], amount)
+            for method in daily_payments:
+                daily_payments[method] += breakdown[method]
+        for payment in daily_training_payments:
+            amount = float(payment["amount"] or 0)
+            daily_revenue += amount
+            breakdown = payment_method_breakdown(payment["paymentMethod"], amount)
             for method in daily_payments:
                 daily_payments[method] += breakdown[method]
 
@@ -934,6 +1062,20 @@ def dashboard_insights(store, query, include_customer_follow_up=False):
         else:
             month["shop2Revenue"] += revenue
         month["total"] += revenue
+    for row in training_trend_rows:
+        if not row["createdAt"]:
+            continue
+        try:
+            local_date = datetime.fromisoformat(row["createdAt"].replace("Z", "+00:00")).astimezone()
+        except ValueError:
+            continue
+        month = months[local_date.month - 1]
+        revenue = float(row["amount"] or 0)
+        if row["shopType"] == "HOMME":
+            month["shop1Revenue"] += revenue
+        else:
+            month["shop2Revenue"] += revenue
+        month["total"] += revenue
 
     return {
         "monthlyTrends": months,
@@ -941,6 +1083,7 @@ def dashboard_insights(store, query, include_customer_follow_up=False):
             "revenue": daily_revenue,
             "invoiceCount": daily_invoice_count,
             "payments": daily_payments,
+            "trainingPaymentCount": daily_training_payment_count,
             "appointmentsToday": int(daily_reservation_count),
             "pendingAppointmentsToday": int(pending_daily_reservations),
         },

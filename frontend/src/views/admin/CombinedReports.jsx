@@ -14,13 +14,10 @@ export default function CombinedReports({ shopType = null }) {
   const today = getTodayDateStr();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
-  const [zReportData, setZReportData] = useState(null);
-  const [salesReportData, setSalesReportData] = useState(null);
-  const [providerStats, setProviderStats] = useState(null);
-  const [zReportError, setZReportError] = useState('');
-  const [salesReportError, setSalesReportError] = useState('');
-  const [providerStatsError, setProviderStatsError] = useState('');
+  const [shopReports, setShopReports] = useState({});
+  const [shopReportErrors, setShopReportErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const reportShopTypes = shopType ? [shopType] : ['HOMME', 'FEMME'];
 
   const handlePreset = (type) => {
     const now = new Date();
@@ -41,45 +38,61 @@ export default function CombinedReports({ shopType = null }) {
 
   const generateReports = async () => {
     setLoading(true);
-    setZReportError('');
-    setSalesReportError('');
-    setProviderStatsError('');
-    setZReportData(null);
-    setSalesReportData(null);
-    setProviderStats(null);
-    const params = new URLSearchParams({ startDate, endDate });
-    if (shopType) params.append('shopType', shopType);
+    setShopReportErrors({});
+    setShopReports({});
 
     try {
-      const [zResponse, salesResponse, providerStatsResponse] = await Promise.all([
-        fetch(`${API_BASE}/z-report?${params.toString()}`),
-        fetch(`${API_BASE}/product-sales-report?${params.toString()}`),
-        apiFetch(`${API_BASE}/service-provider-stats?${params.toString()}`),
-      ]);
-      const [zResult, salesResult, providerStatsResult] = await Promise.all([
-        zResponse.ok ? zResponse.json() : Promise.resolve(null),
-        salesResponse.ok ? salesResponse.json() : Promise.resolve(null),
-        providerStatsResponse.ok ? providerStatsResponse.json() : providerStatsResponse.json().catch(() => null),
-      ]);
-
-      if (zResponse.ok) setZReportData(zResult);
-      else setZReportError('Erreur lors de la génération du rapport Z.');
-      if (salesResponse.ok) setSalesReportData(salesResult);
-      else setSalesReportError('Erreur lors de la génération du rapport détaillé.');
-      if (providerStatsResponse.ok) setProviderStats(providerStatsResult);
-      else setProviderStatsError(providerStatsResult?.error || 'Erreur lors du chargement des statistiques prestataires.');
-      if (!zResponse.ok || !salesResponse.ok || !providerStatsResponse.ok) {
+      const results = await Promise.all(reportShopTypes.map(async (reportShopType) => {
+        const params = new URLSearchParams({ startDate, endDate, shopType: reportShopType });
+        const [zResponse, salesResponse, providerStatsResponse] = await Promise.all([
+          apiFetch(`${API_BASE}/z-report?${params.toString()}`),
+          apiFetch(`${API_BASE}/product-sales-report?${params.toString()}`),
+          apiFetch(`${API_BASE}/service-provider-stats?${params.toString()}`),
+        ]);
+        const [zReport, salesReport, providerStats] = await Promise.all([
+          zResponse.json(),
+          salesResponse.json(),
+          providerStatsResponse.json(),
+        ]);
+        return {
+          shopType: reportShopType,
+          data: {
+            zReport: zResponse.ok ? zReport : null,
+            salesReport: salesResponse.ok ? salesReport : null,
+            providerStats: providerStatsResponse.ok ? providerStats : null,
+          },
+          errors: {
+            zReport: zResponse.ok ? '' : zReport.detail || 'Erreur lors de la génération du rapport Z.',
+            salesReport: salesResponse.ok ? '' : salesReport.detail || 'Erreur lors de la génération du rapport détaillé.',
+            providerStats: providerStatsResponse.ok ? '' : providerStats.detail || providerStats.error || 'Erreur lors du chargement des statistiques prestataires.',
+          },
+        };
+      }));
+      setShopReports(Object.fromEntries(results.map((result) => [result.shopType, result.data])));
+      const errors = Object.fromEntries(results.map((result) => [result.shopType, result.errors]));
+      setShopReportErrors(errors);
+      if (results.some(({ errors: shopErrors }) => Object.values(shopErrors).some(Boolean))) {
         showToast('Un ou plusieurs rapports n’ont pas pu être générés.', 'error');
       }
     } catch (error) {
       console.error(error);
-      setZReportError('Erreur réseau lors de la génération du rapport Z.');
-      setSalesReportError('Erreur réseau lors de la génération du rapport détaillé.');
-      setProviderStatsError('Erreur réseau lors du chargement des statistiques prestataires.');
+      setShopReportErrors(Object.fromEntries(reportShopTypes.map((reportShopType) => [
+        reportShopType,
+        {
+          zReport: 'Erreur réseau lors de la génération du rapport Z.',
+          salesReport: 'Erreur réseau lors de la génération du rapport détaillé.',
+          providerStats: 'Erreur réseau lors du chargement des statistiques prestataires.',
+        },
+      ])));
     } finally {
       setLoading(false);
     }
   };
+
+  const hasReports = reportShopTypes.some((reportShopType) =>
+    Object.values(shopReports[reportShopType] || {}).some(Boolean)
+    || Object.values(shopReportErrors[reportShopType] || {}).some(Boolean)
+  );
 
   return (
     <div className="space-y-6 bg-white">
@@ -87,7 +100,7 @@ export default function CombinedReports({ shopType = null }) {
         <div>
           <h2 className="text-xl font-bold text-neutral-900">Rapports comptable & ventes</h2>
           <p className="mt-1 text-xs leading-5 text-neutral-500">
-            Consultez le rapport de clôture et le détail des ventes pour la même période.
+            Consultez le rapport de clôture, le détail des ventes et les performances des prestataires sur la même période.
           </p>
         </div>
         <DateRangeFilter
@@ -109,82 +122,119 @@ export default function CombinedReports({ shopType = null }) {
         </div>
       </div>
 
-      {loading && <p role="status" className="text-xs text-neutral-500">Génération des deux rapports...</p>}
-      {!loading && !zReportData && !salesReportData && !zReportError && !salesReportError && (
+      {loading && <p role="status" className="text-xs text-neutral-500">Génération des rapports...</p>}
+      {!loading && !hasReports && (
         <p className="py-8 text-center text-xs text-neutral-500">Sélectionnez une période puis générez les rapports.</p>
       )}
 
-      {(zReportData || zReportError) && (
-        <section className="space-y-4 border-b border-neutral-200 pb-6">
-          {zReportError ? (
-            <ErrorState title="Rapport Z indisponible" description={zReportError} onRetry={generateReports} />
-          ) : (
-            <ZReport
-              zReportData={zReportData}
-              loading={false}
-              showControls={false}
-              onPrint={(data) => triggerPrint(data)}
-            />
-          )}
-        </section>
-      )}
+      {hasReports && reportShopTypes.map((reportShopType) => {
+        const report = shopReports[reportShopType] || {};
+        const errors = shopReportErrors[reportShopType] || {};
+        const shopName = reportShopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME;
+        const providers = report.providerStats?.providers || [];
 
-      {(salesReportData || salesReportError) && (
-        <section>
-          <ProductSalesReport
-            shopType={shopType}
-            combinedMode
-            combinedReportData={salesReportData}
-            combinedStartDate={startDate}
-            combinedEndDate={endDate}
-            combinedLoading={false}
-            combinedError={salesReportError}
-          />
-        </section>
-      )}
+        return (
+          <section key={reportShopType} className="space-y-6 border-b border-neutral-200 pb-8">
+            {!shopType && <h2 className="border-b border-neutral-200 pb-3 text-lg font-bold text-neutral-900">{shopName}</h2>}
 
-      {(providerStats || providerStatsError) && (
-        <section className="space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-neutral-900">Performance des prestataires</h3>
-            <p className="mt-1 text-xs text-neutral-500">
-              Classement selon le nombre de prestations attribuées et le chiffre d’affaires associé à la période.
-            </p>
-          </div>
-          {providerStatsError ? (
-            <ErrorState title="Statistiques prestataires indisponibles" description={providerStatsError} onRetry={generateReports} />
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {[
-                { title: 'Prestations les plus réalisées', rows: providerStats.topByCount || [], metric: (row) => `${row.serviceCount} prestation${row.serviceCount > 1 ? 's' : ''}` },
-                { title: 'Prestataires au meilleur chiffre d’affaires', rows: providerStats.topByRevenue || [], metric: (row) => formatFCFA(row.revenue) },
-              ].map((ranking) => (
-                <div key={ranking.title} className="rounded-xl border border-neutral-200 bg-white p-4">
-                  <h4 className="mb-3 text-xs font-bold text-neutral-800">{ranking.title}</h4>
-                  {ranking.rows.length ? (
-                    <ol className="divide-y divide-neutral-100">
-                      {ranking.rows.slice(0, 10).map((provider, index) => (
-                        <li key={`${provider.id}-${provider.shopType}`} className="flex items-center justify-between gap-3 py-2 text-xs">
-                          <span className="min-w-0 truncate text-neutral-700">
-                            <span className="mr-2 font-semibold text-neutral-400">{index + 1}.</span>
-                            <span className="font-semibold text-neutral-900">{provider.name}</span>
-                            <span className="ml-2 text-neutral-400">
-                              {provider.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
-                            </span>
-                          </span>
-                          <span className="shrink-0 font-bold text-[#b38059]">{ranking.metric(provider)}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <EmptyState title="Aucune prestation attribuée" description="Aucune facture de prestation n’a été attribuée à un prestataire sur cette période." className="border-0 bg-transparent py-6" />
-                  )}
+            {(report.zReport || errors.zReport) && (
+              errors.zReport ? (
+                <ErrorState title={`Rapport Z — ${shopName}`} description={errors.zReport} onRetry={generateReports} />
+              ) : (
+                <ZReport
+                  zReportData={{ ...report.zReport, shopName }}
+                  loading={false}
+                  showControls={false}
+                  showPrintButton={Boolean(shopType) || reportShopType === reportShopTypes.find((type) => shopReports[type]?.zReport)}
+                  printLabel={shopType ? 'Imprimer le ticket Z' : 'Imprimer le rapport Z des deux salons'}
+                  onPrint={(data) => {
+                    const reportsToPrint = reportShopTypes
+                      .filter((type) => shopReports[type]?.zReport)
+                      .map((type) => ({
+                        ...shopReports[type].zReport,
+                        shopType: type,
+                        shopName: type === 'HOMME' ? shopNames.HOMME : shopNames.FEMME,
+                        serviceProviders: shopReports[type].providerStats?.providers || [],
+                      }));
+                    triggerPrint({
+                      ...data,
+                      id: `z-report-${reportShopTypes.join('-')}-${startDate}-${endDate}`,
+                      zReport: {
+                        ...data.zReport,
+                        shopReports: reportsToPrint,
+                      },
+                    });
+                  }}
+                />
+              )
+            )}
+
+            {(report.salesReport || errors.salesReport) && (
+              <ProductSalesReport
+                shopType={reportShopType}
+                combinedMode
+                combinedReportData={report.salesReport}
+                combinedStartDate={startDate}
+                combinedEndDate={endDate}
+                combinedLoading={false}
+                combinedError={errors.salesReport}
+              />
+            )}
+
+            {(report.providerStats || errors.providerStats) && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-900">Performance des prestataires — {shopName}</h3>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Nombre de prestations attribuées et chiffre d’affaires associé à la période.
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+                {errors.providerStats ? (
+                  <ErrorState title="Statistiques prestataires indisponibles" description={errors.providerStats} onRetry={generateReports} />
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-neutral-200">
+                    {providers.length ? (
+                      <table className="w-full text-left text-xs">
+                        <thead className="border-b border-neutral-200 bg-neutral-50 text-neutral-500">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold">Prestataire</th>
+                            <th className="px-4 py-3 text-right font-semibold">Prestations réalisées</th>
+                            <th className="px-4 py-3 text-right font-semibold">Chiffre d’affaires</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-100">
+                          {[...providers]
+                            .sort((a, b) => b.revenue - a.revenue || b.serviceCount - a.serviceCount || a.name.localeCompare(b.name))
+                            .map((provider) => (
+                              <tr key={`${provider.id}-${provider.shopType}`}>
+                                <td className="px-4 py-3 font-semibold text-neutral-900">{provider.name}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-neutral-700">{provider.serviceCount}</td>
+                                <td className="px-4 py-3 text-right font-semibold tabular-nums text-[#b38059]">{formatFCFA(provider.revenue)}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                        <tfoot className="border-t border-neutral-300 bg-neutral-50 font-bold">
+                          <tr>
+                            <td className="px-4 py-3 text-neutral-900">Total</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-neutral-900">
+                              {providers.reduce((sum, provider) => sum + provider.serviceCount, 0)}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-[#b38059]">
+                              {formatFCFA(providers.reduce((sum, provider) => sum + provider.revenue, 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    ) : (
+                      <EmptyState title="Aucun prestataire enregistré" description="Aucune prestation n’a été attribuée à un prestataire sur cette période." className="border-0 bg-transparent py-6" />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }

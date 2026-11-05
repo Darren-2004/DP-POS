@@ -18,7 +18,7 @@ import {
   User,
 } from 'lucide-react';
 import { PageHeader, EmptyState, LoadingState } from '../../components/DesignSystem';
-import { formatFCFA, triggerPrint, getTodayDateStr, getPaymentMethodLabel } from '../../utils/helpers';
+import { apiFetch, formatFCFA, triggerPrint, getTodayDateStr, getPaymentMethodLabel } from '../../utils/helpers';
 import { API_BASE } from '../../utils/constants';
 import { useShopNames } from '../../components/ShopNamesContext';
 
@@ -44,8 +44,8 @@ export default function InvoicesJournalPanel({
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [pendingCancelInvoice, setPendingCancelInvoice] = useState(null);
-  const [adminPin, setAdminPin] = useState('');
-  const [cancelReason, setCancelReason] = useState('Erreur de caisse');
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelPin, setCancelPin] = useState('');
   const [cancelError, setCancelError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const totalPages = Number(invoicePagination.totalPages) || 0;
@@ -77,33 +77,33 @@ export default function InvoicesJournalPanel({
     const cashier = String(inv.createdBy?.name || '').toLowerCase();
     return invNo.includes(term) || client.includes(term) || cashier.includes(term);
   });
+  const cancelledInvoices = filteredInvoices.filter((invoice) => invoice.status === 'CANCELLED');
+  const tableInvoices = filteredInvoices.filter((invoice) => invoice.status === 'VALIDATED');
 
   const handleCancelInvoice = async () => {
-    if (!pendingCancelInvoice || !adminPin.trim()) {
-      setCancelError('Le code PIN administrateur est obligatoire.');
+    if (!pendingCancelInvoice || !cancelReason.trim() || !cancelPin.trim()) {
+      setCancelError('Saisissez le PIN du compte connecté et le motif détaillé de l’annulation.');
       return;
     }
     setSubmitting(true);
     setCancelError('');
     try {
-      const res = await fetch(`${API_BASE}/invoices/${pendingCancelInvoice.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-pin': adminPin.trim(),
-        },
-        body: JSON.stringify({ reason: cancelReason }),
+      const res = await apiFetch(`${API_BASE}/invoices/${pendingCancelInvoice.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: cancelPin.trim(), cancellationReason: cancelReason.trim() }),
       });
       if (res.ok) {
         setPendingCancelInvoice(null);
-        setAdminPin('');
+        setCancelReason('');
+        setCancelPin('');
         if (typeof fetchInvoices === 'function') {
           fetchInvoices();
         }
         window.dispatchEvent(new CustomEvent('pos:dashboard-refresh'));
       } else {
         const data = await res.json().catch(() => ({}));
-        setCancelError(data.error || 'Code PIN administrateur invalide.');
+        setCancelError(data.detail || data.error || 'Impossible d’annuler cette facture.');
       }
     } catch {
       setCancelError('Erreur de communication avec le serveur.');
@@ -212,14 +212,40 @@ export default function InvoicesJournalPanel({
         </div>
       </div>
 
+      {cancelledInvoices.length > 0 && (
+        <section className="overflow-hidden rounded-lg border border-rose-200 bg-rose-50/40">
+          <div className="flex items-center justify-between border-b border-rose-200 px-4 py-3">
+            <div>
+              <h2 className="text-xs font-bold text-rose-800">Tickets annulés</h2>
+              <p className="mt-0.5 text-[11px] text-rose-700">Historique conservé — sélectionnez un ticket pour consulter le motif et les détails.</p>
+            </div>
+            <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-rose-700">{cancelledInvoices.length}</span>
+          </div>
+          <div className="divide-y divide-rose-100">
+            {cancelledInvoices.map((invoice) => (
+              <button
+                key={invoice.id}
+                type="button"
+                onClick={() => setSelectedInvoice(invoice)}
+                className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-rose-50"
+              >
+                <span className="text-xs font-bold text-neutral-900">{invoice.invoiceNumber} · {invoice.clientName || 'Client de passage'}</span>
+                <span className="text-[11px] text-rose-700">{invoice.cancellationReason || 'Motif non renseigné'}</span>
+                <span className="text-xs font-bold text-neutral-600">{formatFCFA(invoice.totalAmount)}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Invoices Table */}
-      {filteredInvoices.length === 0 ? (
+      {tableInvoices.length === 0 && cancelledInvoices.length === 0 ? (
         <EmptyState
           title="Aucun ticket trouvé"
           description="Aucune facture ne correspond à vos filtres de recherche."
           className="py-12"
         />
-      ) : (
+      ) : tableInvoices.length > 0 ? (
         <div className="overflow-x-auto rounded-lg border border-neutral-200">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -236,7 +262,7 @@ export default function InvoicesJournalPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {filteredInvoices.map((inv) => {
+              {tableInvoices.map((inv) => {
                 const isValidated = inv.status === 'VALIDATED';
                 const isCancelled = inv.status === 'CANCELLED';
                 const isHomme = inv.shopType === 'HOMME';
@@ -317,11 +343,12 @@ export default function InvoicesJournalPanel({
                             type="button"
                             onClick={() => {
                               setPendingCancelInvoice(inv);
-                              setAdminPin('');
+                              setCancelReason('');
+                              setCancelPin('');
                               setCancelError('');
                             }}
                             className="rounded p-1 text-neutral-400 hover:bg-rose-50 hover:text-rose-600 transition"
-                            title="Annuler ce ticket (PIN requis)"
+                            title="Annuler ce ticket"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -334,7 +361,7 @@ export default function InvoicesJournalPanel({
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
 
       {totalPages > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
@@ -460,6 +487,20 @@ export default function InvoicesJournalPanel({
                     <span className="font-semibold">Motif :</span> {selectedInvoice.cancellationReason}
                   </div>
                 )}
+                {selectedInvoice.status === 'CANCELLED' && (
+                  <>
+                    {selectedInvoice.cancelledAt && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-neutral-500">Date d’annulation</span>
+                        <span className="font-medium text-neutral-900">{new Date(selectedInvoice.cancelledAt).toLocaleString('fr-FR')}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1">
+                      <span className="text-neutral-500">Annulée par</span>
+                      <span className="font-medium text-neutral-900">{selectedInvoice.cancelledBy?.name || 'Utilisateur supprimé'}</span>
+                    </div>
+                  </>
+                )}
 
                 {/* Reservation badge */}
                 {selectedInvoice.isReservation && selectedInvoice.reservationNo && (
@@ -571,7 +612,8 @@ export default function InvoicesJournalPanel({
                   onClick={() => {
                     setSelectedInvoice(null);
                     setPendingCancelInvoice(selectedInvoice);
-                    setAdminPin('');
+                    setCancelReason('');
+                    setCancelPin('');
                     setCancelError('');
                   }}
                   className="w-full flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 py-2.5 text-xs font-semibold text-rose-700 transition"
@@ -585,7 +627,7 @@ export default function InvoicesJournalPanel({
         </div>
       )}
 
-      {/* Cancel Modal with PIN */}
+      {/* Cancellation confirmation */}
       {pendingCancelInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-neutral-200">
@@ -602,7 +644,7 @@ export default function InvoicesJournalPanel({
             </div>
 
             <p className="text-xs text-neutral-600 mb-4">
-              Cette action retirera le ticket du chiffre d'affaires et conservera la trace de l'annulation.
+              Le ticket restera dans le journal avec son statut annulé et sera exclu du chiffre d’affaires. Le motif sera conservé dans son historique.
             </p>
 
             {cancelError && (
@@ -613,31 +655,34 @@ export default function InvoicesJournalPanel({
 
             <div className="space-y-3 mb-5">
               <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Motif de l'annulation
-                </label>
-                <select
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  className="w-full rounded border border-neutral-300 bg-white p-2 text-xs text-neutral-900 outline-none focus:border-rose-500"
-                >
-                  <option value="Erreur de caisse">Erreur de saisie / caisse</option>
-                  <option value="Client insatisfait / Modification">Demande de modification client</option>
-                  <option value="Doublon de ticket">Ticket émis en doublon</option>
-                  <option value="Autre motif">Autre motif exceptionnel</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Code PIN Administrateur
+                <label htmlFor="invoice-cancellation-pin" className="mb-1 block text-xs font-semibold text-neutral-700">
+                  Code PIN {currentUser?.role === 'MANAGER' ? 'du gérant connecté' : 'de l’administrateur connecté'}
                 </label>
                 <input
+                  id="invoice-cancellation-pin"
                   type="password"
-                  placeholder="Entrez le code PIN..."
-                  value={adminPin}
-                  onChange={(e) => setAdminPin(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="current-password"
+                  required
+                  value={cancelPin}
+                  onChange={(e) => setCancelPin(e.target.value)}
+                  placeholder="Saisissez votre code PIN"
                   className="w-full rounded border border-neutral-300 bg-white p-2 text-xs text-neutral-900 outline-none focus:border-rose-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="invoice-cancellation-reason" className="mb-1 block text-xs font-semibold text-neutral-700">
+                  Motif détaillé de l’annulation
+                </label>
+                <textarea
+                  id="invoice-cancellation-reason"
+                  required
+                  maxLength={500}
+                  rows={4}
+                  placeholder="Expliquez pourquoi ce ticket est annulé"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full resize-y rounded border border-neutral-300 bg-white p-2 text-xs text-neutral-900 outline-none focus:border-rose-500"
                   autoFocus
                 />
               </div>
@@ -654,7 +699,7 @@ export default function InvoicesJournalPanel({
               <button
                 type="button"
                 onClick={handleCancelInvoice}
-                disabled={submitting || !adminPin.trim()}
+                disabled={submitting || !cancelReason.trim() || !cancelPin.trim()}
                 className="rounded bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
               >
                 {submitting ? 'Validation...' : 'Confirmer l’annulation'}

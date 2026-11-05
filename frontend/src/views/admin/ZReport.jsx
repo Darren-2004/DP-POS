@@ -5,7 +5,15 @@ import DateRangeFilter from '../../components/DateRangeFilter';
 import { EmptyState, LoadingState } from '../../components/DesignSystem';
 import { formatFCFA, getTodayDateStr } from '../../utils/helpers';
 
-export default function ZReport({ zReportData, loading = false, onGenerate, onPrint, showControls = true }) {
+export default function ZReport({
+  zReportData,
+  loading = false,
+  onGenerate,
+  onPrint,
+  showControls = true,
+  showPrintButton = true,
+  printLabel = 'Imprimer le ticket Z',
+}) {
   const today = getTodayDateStr();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
@@ -66,10 +74,10 @@ export default function ZReport({ zReportData, loading = false, onGenerate, onPr
               <Award className={`h-4 w-4 ${loading ? 'animate-pulse' : ''}`} />
               {loading ? 'Génération...' : 'Générer le rapport'}
             </Button>
-            {zReportData && (
+            {zReportData && showPrintButton && (
               <Button variant="ghost" size="md" onClick={() => onPrint && onPrint({ ...zReportData, isZReport: true, zReport: zReportData })}>
                 <Printer className="h-4 w-4 text-[#b38059]" />
-                Imprimer le ticket Z
+                {printLabel}
               </Button>
             )}
           </div>
@@ -80,14 +88,14 @@ export default function ZReport({ zReportData, loading = false, onGenerate, onPr
             <Award className="h-5 w-5 text-[#b38059]" />
             Résumé comptable & clôture (Z)
           </h3>
-          {zReportData && (
+          {zReportData && showPrintButton && (
             <Button
               variant="ghost"
               size="md"
               onClick={() => onPrint && onPrint({ ...zReportData, isZReport: true, zReport: zReportData })}
             >
               <Printer className="h-4 w-4 text-[#b38059]" />
-              Imprimer le ticket Z
+              {printLabel}
             </Button>
           )}
         </div>
@@ -100,7 +108,7 @@ export default function ZReport({ zReportData, loading = false, onGenerate, onPr
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-neutral-200 pb-4">
             <div>
               <div className="text-xs text-neutral-500">
-                {zReportData.periodLabel || 'Période Sélectionnée'}
+                {zReportData.shopName ? `${zReportData.shopName} · ` : ''}{zReportData.periodLabel || 'Période Sélectionnée'}
               </div>
               <div className="text-3xl font-semibold text-neutral-900 mt-1">
                 {formatFCFA(zReportData.totalSales || zReportData.total)}
@@ -114,6 +122,11 @@ export default function ZReport({ zReportData, loading = false, onGenerate, onPr
               {zReportData.resPaymentCount > 0 && (
                 <div>
                   + <strong className="text-neutral-900 font-semibold">{zReportData.resPaymentCount}</strong> acomptes de réservations
+                </div>
+              )}
+              {zReportData.trainingPaymentCount > 0 && (
+                <div>
+                  + <strong className="text-neutral-900 font-semibold">{zReportData.trainingPaymentCount}</strong> tranches de formation — <strong className="text-violet-700">{formatFCFA(zReportData.trainingTotal)}</strong>
                 </div>
               )}
               {zReportData.cancelledCount > 0 && (

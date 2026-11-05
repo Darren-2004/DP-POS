@@ -227,7 +227,7 @@ export default function Categories({ categories = [], fetchCategories, loading =
         showToast('Catégorie supprimée.', 'success');
       } else {
         const j = await res.json().catch(() => ({}));
-        showToast(j.error || 'Erreur lors de la suppression', 'error');
+        showToast(j.detail || j.error || 'Erreur lors de la suppression', 'error');
       }
     } catch {
       showToast('Erreur réseau', 'error');

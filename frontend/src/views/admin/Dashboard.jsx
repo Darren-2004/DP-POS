@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
+  GraduationCap,
 } from 'lucide-react';
 import { EmptyState, ErrorState, PageHeader, LoadingState } from '../../components/DesignSystem';
 import { apiFetch, formatFCFA, getTodayDateStr } from '../../utils/helpers';
@@ -142,6 +143,10 @@ export default function Dashboard({
   const analytics = stats?.analytics || {};
   const growthPercentage = stats?.growthPercentage;
   const yesterdayTotal = stats?.yesterday?.total ?? 0;
+  const reservationCollected = Number(stats?.filtered?.reservationTotal) || 0;
+  const trainingStats = stats?.filtered || stats?.today || {};
+  const trainingCollected = Number(trainingStats.trainingTotal) || 0;
+  const trainingPaymentCount = Number(trainingStats.trainingPaymentCount) || 0;
 
   // Invoices filtered by active shop
   const safeInvoices = (Array.isArray(invoices) ? invoices : []).filter(
@@ -170,6 +175,8 @@ export default function Dashboard({
       shop2Revenue += amt;
     }
   });
+  shop1Revenue += Number(trainingStats.trainingByShop?.HOMME) || 0;
+  shop2Revenue += Number(trainingStats.trainingByShop?.FEMME) || 0;
 
   // Pie chart showing total revenue divided by each shop
   const shopPieData = [
@@ -193,6 +200,14 @@ export default function Dashboard({
     );
 
     if (comparisonPeriod === 'months') {
+      if (Array.isArray(dashboardInsights?.monthlyTrends) && dashboardInsights.monthlyTrends.length) {
+        return dashboardInsights.monthlyTrends.map((month) => ({
+          label: month.month,
+          shop1: Number(month.shop1Revenue) || 0,
+          shop2: Number(month.shop2Revenue) || 0,
+          total: Number(month.total) || 0,
+        }));
+      }
       // 12 Months of current year
       const months = [
         'Janv', 'Févr', 'Mars', 'Avr', 'Mai', 'Juin',
@@ -260,7 +275,7 @@ export default function Dashboard({
       });
       return weekBuckets;
     }
-  }, [invoices, comparisonPeriod]);
+  }, [invoices, comparisonPeriod, dashboardInsights]);
 
   // Payment breakdown data
   const pb = analytics.paymentBreakdown || {};
@@ -547,7 +562,7 @@ export default function Dashboard({
       </div>
 
       {/* Solid Sub-cards: Prestations, Stock, Réservations (No Gradients) */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-600 text-white shadow-2xs">
@@ -556,7 +571,7 @@ export default function Dashboard({
             <div>
               <p className="text-[11px] font-semibold text-amber-900 uppercase tracking-wider">Ventes Prestations</p>
               <p className="text-base font-bold text-neutral-900">
-                {formatFCFA(ratios.serviceRevenue || totalRev)}
+                {formatFCFA(ratios.serviceRevenue ?? totalRev)}
               </p>
             </div>
           </div>
@@ -582,7 +597,7 @@ export default function Dashboard({
           </span>
         </div>
 
-        <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 flex items-center justify-between sm:col-span-2 lg:col-span-1">
+        <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600 text-white shadow-2xs">
               <Calendar className="h-4 w-4" />
@@ -596,6 +611,36 @@ export default function Dashboard({
           </div>
           <span className="text-[11px] font-bold text-violet-800 bg-violet-100 px-2.5 py-0.5 rounded-full">
             {Array.isArray(reservationPayments) ? reservationPayments.length : 0} acomptes
+          </span>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-2xs">
+              <Calendar className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-emerald-900 uppercase tracking-wider">Acomptes encaissés</p>
+              <p className="text-base font-bold text-neutral-900">{formatFCFA(reservationCollected)}</p>
+            </div>
+          </div>
+          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+            Réservations
+          </span>
+        </div>
+
+        <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600 text-white shadow-2xs">
+              <GraduationCap className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-violet-900 uppercase tracking-wider">Formations encaissées</p>
+              <p className="text-base font-bold text-neutral-900">{formatFCFA(trainingCollected)}</p>
+            </div>
+          </div>
+          <span className="text-[11px] font-bold text-violet-800 bg-violet-100 px-2.5 py-0.5 rounded-full">
+            {trainingPaymentCount} tranche{trainingPaymentCount === 1 ? '' : 's'}
           </span>
         </div>
       </div>

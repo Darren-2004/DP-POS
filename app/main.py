@@ -46,6 +46,18 @@ from app.operations import (
     perform_database_backup,
     schedule_automatic_backups,
 )
+from app.training import (
+    TrainingError,
+    add_payment as add_training_payment,
+    create_course as create_training_course,
+    create_enrollment as create_training_enrollment,
+    list_courses as list_training_courses,
+    list_enrollments as list_training_enrollments,
+    training_summary,
+    update_course as update_training_course,
+    update_due_date as update_training_due_date,
+    void_payment as void_training_payment,
+)
 
 
 def database_path():
@@ -149,6 +161,23 @@ def create_app(store=None):
         if user["role"] != "ADMIN":
             raise HTTPException(status_code=403, detail="Droits administrateur requis")
         return user
+
+    def training_actor(request):
+        actor = authenticated_user(request)
+        if actor["role"] not in {"ADMIN", "MANAGER"}:
+            raise HTTPException(status_code=403, detail="Accès réservé à l’administration et aux gérants")
+        if actor["role"] == "MANAGER" and actor["shopType"] not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=403, detail="Aucun shop n'est assigné à ce gérant")
+        return actor
+
+    def training_scope(actor, requested_shop=None):
+        if actor["role"] == "MANAGER":
+            if requested_shop and requested_shop != actor["shopType"]:
+                raise HTTPException(status_code=403, detail="Shop non autorisé")
+            return actor["shopType"]
+        if requested_shop and requested_shop not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=400, detail="Shop invalide")
+        return requested_shop
 
     @app.get("/api/users")
     def list_users():
@@ -266,7 +295,7 @@ def create_app(store=None):
         actor = authenticated_user(request)
         with get_store()._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            user = connection.execute('SELECT id, role, shopType FROM "User" WHERE id = ?', (user_id,)).fetchone()
+            user = connection.execute('SELECT id, name, role, shopType FROM "User" WHERE id = ?', (user_id,)).fetchone()
             if user is None:
                 raise HTTPException(status_code=404, detail="Utilisateur introuvable")
             if actor["role"] == "MANAGER":
@@ -283,6 +312,16 @@ def create_app(store=None):
                 connection.execute('UPDATE "Reservation" SET createdById = ? WHERE createdById = ?', (admin["id"], user_id))
                 connection.execute('UPDATE "Reservation" SET updatedById = NULL WHERE updatedById = ?', (user_id,))
                 connection.execute('UPDATE "ReservationPayment" SET createdById = ? WHERE createdById = ?', (admin["id"], user_id))
+                connection.execute(
+                    '''UPDATE "TrainingAudit" SET actorName = ?
+                       WHERE createdById = ? AND actorName = ?''',
+                    (user["name"], user_id, ""),
+                )
+                connection.execute('UPDATE "TrainingCourse" SET createdById = ? WHERE createdById = ?', (admin["id"], user_id))
+                connection.execute('UPDATE "TrainingEnrollment" SET createdById = ? WHERE createdById = ?', (admin["id"], user_id))
+                connection.execute('UPDATE "TrainingPayment" SET createdById = ? WHERE createdById = ?', (admin["id"], user_id))
+                connection.execute('UPDATE "TrainingPayment" SET voidedById = ? WHERE voidedById = ?', (admin["id"], user_id))
+                connection.execute('UPDATE "TrainingAudit" SET createdById = ? WHERE createdById = ?', (admin["id"], user_id))
             connection.execute('DELETE FROM "User" WHERE id = ?', (user_id,))
         return {"message": "Utilisateur supprimé"}
 
@@ -365,46 +404,42 @@ def create_app(store=None):
 
     @app.get("/api/invoices")
     def get_invoices(request: Request):
-        return list_invoices(get_store(), dict(request.query_params))
+        actor = authenticated_user(request)
+        query = dict(request.query_params)
+        if actor["role"] == "CASHIER":
+            query["cashierId"] = actor["id"]
+            query["strictCashier"] = "true"
+        elif actor["role"] == "MANAGER":
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun shop n'est assigné à ce gérant")
+            query["shopType"] = actor["shopType"]
+        elif actor["role"] != "ADMIN":
+            raise HTTPException(status_code=403, detail="Droits insuffisants")
+        if query.get("status") not in {None, "", "VALIDATED", "CANCELLED"}:
+            raise HTTPException(status_code=400, detail="Statut de facture invalide")
+        return list_invoices(get_store(), query)
 
     @app.delete("/api/invoices/{invoice_id}")
-    async def delete_invoice(invoice_id: str, request: Request):
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
-        admin_pin = request.headers.get("x-admin-pin") or body.get("adminPin") or request.query_params.get("adminPin")
-        admin_id = request.headers.get("x-admin-id") or body.get("adminId") or request.query_params.get("adminId")
-        if not admin_pin:
-            raise HTTPException(status_code=400, detail="Mot de passe administrateur requis")
-        with get_store()._connect() as connection:
-            if admin_id:
-                admin = connection.execute('SELECT id, pin, role FROM "User" WHERE id = ?', (admin_id,)).fetchone()
-            else:
-                admin = connection.execute(
-                    'SELECT id, pin, role FROM "User" WHERE role = \'ADMIN\' LIMIT 1'
-                ).fetchone()
-            if admin is None:
-                raise HTTPException(status_code=403, detail="Compte administrateur introuvable")
-            if admin["role"] != "ADMIN":
-                raise HTTPException(status_code=403, detail="Compte administrateur introuvable")
-            if not verify_pin(str(admin_pin), admin["pin"]):
-                raise HTTPException(status_code=401, detail="Mot de passe administrateur incorrect")
-            cursor = connection.execute('DELETE FROM "Invoice" WHERE id = ?', (invoice_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Facture non trouvée")
-        return {"message": "Facture supprimée avec succès"}
+    def delete_invoice(invoice_id: str):
+        raise HTTPException(
+            status_code=405,
+            detail="Une facture ne peut pas être supprimée. Utilisez son annulation avec un motif.",
+        )
 
     @app.post("/api/invoices/{invoice_id}/cancel")
     async def cancel_invoice_route(invoice_id: str, request: Request):
+        actor = authenticated_user(request)
+        if actor["role"] not in {"ADMIN", "MANAGER"}:
+            raise HTTPException(status_code=403, detail="Droits insuffisants")
         body = await request.json()
         try:
             return cancel_invoice(
                 get_store(),
                 invoice_id,
-                body.get("adminId"),
-                body.get("adminPin"),
+                actor,
+                body.get("pin"),
                 body.get("cancellationReason"),
+                actor["shopType"] if actor["role"] == "MANAGER" else None,
             )
         except InvoiceError as error:
             raise HTTPException(status_code=error.status_code, detail=str(error)) from error
@@ -480,6 +515,84 @@ def create_app(store=None):
     def get_reservation_payments(request: Request):
         return reservation_payments(get_store(), dict(request.query_params))
 
+    @app.get("/api/training/courses")
+    def get_training_courses(request: Request):
+        actor = training_actor(request)
+        include_inactive = actor["role"] == "ADMIN" and request.query_params.get("includeInactive") == "1"
+        return list_training_courses(get_store(), include_inactive=include_inactive)
+
+    @app.post("/api/training/courses", status_code=201)
+    async def post_training_course(request: Request):
+        actor = training_actor(request)
+        try:
+            return create_training_course(get_store(), await request.json(), actor)
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.put("/api/training/courses/{course_id}")
+    async def put_training_course(course_id: str, request: Request):
+        actor = training_actor(request)
+        try:
+            return update_training_course(get_store(), course_id, await request.json(), actor)
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.get("/api/training/enrollments")
+    def get_training_enrollments(request: Request):
+        actor = training_actor(request)
+        shop_type = training_scope(actor, request.query_params.get("shopType"))
+        return list_training_enrollments(get_store(), shop_type, dict(request.query_params))
+
+    @app.post("/api/training/enrollments", status_code=201)
+    async def post_training_enrollment(request: Request):
+        actor = training_actor(request)
+        body = await request.json()
+        try:
+            shop_type = training_scope(actor, body.get("shopType"))
+            return create_training_enrollment(get_store(), body, actor, shop_type)
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.post("/api/training/enrollments/{enrollment_id}/payments", status_code=201)
+    async def post_training_payment(enrollment_id: str, request: Request):
+        actor = training_actor(request)
+        body = await request.json()
+        try:
+            return add_training_payment(
+                get_store(), enrollment_id, body, actor, training_scope(actor)
+            )
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.patch("/api/training/enrollments/{enrollment_id}/due-date")
+    async def patch_training_due_date(enrollment_id: str, request: Request):
+        actor = training_actor(request)
+        body = await request.json()
+        try:
+            return update_training_due_date(
+                get_store(), enrollment_id, body.get("nextDueDate"), actor, training_scope(actor)
+            )
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.post("/api/training/payments/{payment_id}/void")
+    async def post_training_payment_void(payment_id: str, request: Request):
+        actor = training_actor(request)
+        body = await request.json()
+        try:
+            return void_training_payment(
+                get_store(), payment_id, body.get("reason"), actor, training_scope(actor)
+            )
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.get("/api/training/summary")
+    def get_training_summary(request: Request):
+        actor = training_actor(request)
+        query = dict(request.query_params)
+        query["shopType"] = training_scope(actor, request.query_params.get("shopType"))
+        return training_summary(get_store(), query)
+
     @app.get("/api/delivery-persons")
     def get_delivery_persons():
         try:
@@ -517,19 +630,78 @@ def create_app(store=None):
             raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 
 
+    @app.get("/api/product-categories")
+    def list_product_categories(request: Request):
+        shop_type = request.query_params.get("shopType")
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            where = ""
+            params = []
+            if shop_type and shop_type != "ALL":
+                where = "WHERE shopType = ? OR shopType = 'ALL'"
+                params.append(shop_type)
+            categories = connection.execute(
+                f'SELECT id, name, shopType, createdAt FROM "ProductCategory" {where} ORDER BY name COLLATE NOCASE ASC',
+                params,
+            ).fetchall()
+            result = []
+            for cat in categories:
+                cat_dict = dict(cat)
+                p_count = connection.execute(
+                    'SELECT COUNT(*) FROM "Product" WHERE category = ?', (cat["name"],)
+                ).fetchone()[0]
+                cat_dict["productCount"] = p_count
+                result.append(cat_dict)
+            return result
+
+    @app.post("/api/product-categories", status_code=201)
+    async def create_product_category(request: Request):
+        body = await request.json()
+        name = str(body.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Nom de la catégorie requis")
+        shop_type = str(body.get("shopType") or "ALL").strip()
+        cat_id = str(uuid.uuid4())
+        try:
+            with get_store()._connect() as connection:
+                ensure_schema(connection)
+                connection.execute(
+                    'INSERT INTO "ProductCategory" (id, name, shopType) VALUES (?, ?, ?)',
+                    (cat_id, name, shop_type),
+                )
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="Une catégorie avec ce nom existe déjà")
+        return {"id": cat_id, "name": name, "shopType": shop_type}
+
+    @app.delete("/api/product-categories/{category_id}")
+    def delete_product_category(category_id: str):
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            cat = connection.execute('SELECT id, name FROM "ProductCategory" WHERE id = ?', (category_id,)).fetchone()
+            if not cat:
+                raise HTTPException(status_code=404, detail="Catégorie non trouvée")
+            connection.execute('UPDATE "Product" SET category = \'Autre\' WHERE category = ?', (cat["name"],))
+            connection.execute('DELETE FROM "ProductCategory" WHERE id = ?', (category_id,))
+        return {"message": "Catégorie supprimée avec succès"}
+
     @app.get("/api/products")
     def list_products(request: Request):
         shop_type = request.query_params.get("shopType")
+        in_stock_only = request.query_params.get("inStockOnly") in ("true", "1")
         with get_store()._connect() as connection:
+            ensure_schema(connection)
+            conditions = []
+            params = []
             if shop_type and shop_type != "ALL":
-                rows = connection.execute(
-                    'SELECT id, name, price, category, shopType, createdAt FROM "Product" WHERE shopType = ? OR shopType = \'ALL\' ORDER BY name ASC',
-                    (shop_type,)
-                ).fetchall()
-            else:
-                rows = connection.execute(
-                    'SELECT id, name, price, category, shopType, createdAt FROM "Product" ORDER BY name ASC'
-                ).fetchall()
+                conditions.append("(shopType = ? OR shopType = 'ALL')")
+                params.append(shop_type)
+            if in_stock_only:
+                conditions.append("COALESCE(stockQty, 0) > 0")
+            where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            rows = connection.execute(
+                f'SELECT id, name, price, category, shopType, COALESCE(stockQty, 0) AS stockQty, COALESCE(costPrice, 0) AS costPrice, categoryId, createdAt FROM "Product" {where} ORDER BY name COLLATE NOCASE ASC',
+                params,
+            ).fetchall()
         return [dict(row) for row in rows]
 
     @app.post("/api/products", status_code=201)
@@ -542,15 +714,34 @@ def create_app(store=None):
             price = float(body.get("price") or 0)
         except (ValueError, TypeError):
             price = 0
-        category = str(body.get("category") or "PRODUIT").strip()
+        try:
+            stock_qty = int(body.get("stockQty") or 0)
+        except (ValueError, TypeError):
+            stock_qty = 0
+        try:
+            cost_price = float(body.get("costPrice") or 0)
+        except (ValueError, TypeError):
+            cost_price = 0
+        category = str(body.get("category") or "Autre").strip()
         shop_type = str(body.get("shopType") or "ALL").strip()
+        category_id = str(body.get("categoryId") or "").strip() or None
         product_id = str(uuid.uuid4())
         with get_store()._connect() as connection:
+            ensure_schema(connection)
             connection.execute(
-                'INSERT INTO "Product" (id, name, price, category, shopType) VALUES (?, ?, ?, ?, ?)',
-                (product_id, name, price, category, shop_type)
+                'INSERT INTO "Product" (id, name, price, category, shopType, stockQty, costPrice, categoryId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (product_id, name, price, category, shop_type, stock_qty, cost_price, category_id),
             )
-        return {"id": product_id, "name": name, "price": price, "category": category, "shopType": shop_type}
+        return {
+            "id": product_id,
+            "name": name,
+            "price": price,
+            "category": category,
+            "shopType": shop_type,
+            "stockQty": stock_qty,
+            "costPrice": cost_price,
+            "categoryId": category_id,
+        }
 
     @app.put("/api/products/{product_id}")
     async def update_product(product_id: str, request: Request):
@@ -563,16 +754,31 @@ def create_app(store=None):
                 updates["price"] = float(body["price"])
             except (ValueError, TypeError):
                 pass
+        if "stockQty" in body:
+            try:
+                updates["stockQty"] = int(body["stockQty"])
+            except (ValueError, TypeError):
+                pass
+        if "costPrice" in body:
+            try:
+                updates["costPrice"] = float(body["costPrice"])
+            except (ValueError, TypeError):
+                pass
         if "category" in body:
             updates["category"] = str(body["category"]).strip()
+        if "categoryId" in body:
+            updates["categoryId"] = str(body["categoryId"]).strip() or None
         if "shopType" in body:
             updates["shopType"] = str(body["shopType"]).strip()
-        if updates:
-            with get_store()._connect() as connection:
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            if updates:
                 assignments = ", ".join(f'"{col}" = ?' for col in updates)
                 connection.execute(f'UPDATE "Product" SET {assignments} WHERE id = ?', (*updates.values(), product_id))
-        with get_store()._connect() as connection:
-            row = connection.execute('SELECT id, name, price, category, shopType, createdAt FROM "Product" WHERE id = ?', (product_id,)).fetchone()
+            row = connection.execute(
+                'SELECT id, name, price, category, shopType, COALESCE(stockQty, 0) AS stockQty, COALESCE(costPrice, 0) AS costPrice, categoryId, createdAt FROM "Product" WHERE id = ?',
+                (product_id,),
+            ).fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Produit non trouvé")
             return dict(row)
@@ -580,8 +786,119 @@ def create_app(store=None):
     @app.delete("/api/products/{product_id}")
     def delete_product(product_id: str):
         with get_store()._connect() as connection:
+            ensure_schema(connection)
             connection.execute('DELETE FROM "Product" WHERE id = ?', (product_id,))
         return {"message": "Produit supprimé avec succès"}
+
+    @app.get("/api/stock/stats")
+    def get_stock_stats(request: Request):
+        shop_type = request.query_params.get("shopType")
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            prod_cond = []
+            prod_params = []
+            if shop_type and shop_type != "ALL":
+                prod_cond.append("(shopType = ? OR shopType = 'ALL')")
+                prod_params.append(shop_type)
+            prod_where = f"WHERE {' AND '.join(prod_cond)}" if prod_cond else ""
+
+            products = connection.execute(
+                f'SELECT id, name, price, category, shopType, COALESCE(stockQty, 0) AS stockQty, COALESCE(costPrice, 0) AS costPrice FROM "Product" {prod_where}',
+                prod_params,
+            ).fetchall()
+
+            total_stock_value = sum(float(p["price"] or 0) * int(p["stockQty"] or 0) for p in products)
+            total_stock_qty = sum(int(p["stockQty"] or 0) for p in products)
+
+            # Revenue generated by product sales from validated invoices
+            inv_cond = ["i.status = 'VALIDATED'", "ii.itemType = 'PRODUCT'"]
+            inv_params = []
+            if shop_type and shop_type != "ALL":
+                inv_cond.append("i.shopType = ?")
+                inv_params.append(shop_type)
+            inv_where = " AND ".join(inv_cond)
+
+            sales_rows = connection.execute(
+                f'''SELECT ii.categoryName AS productName, ii.price, ii.qty
+                    FROM "InvoiceItem" ii
+                    JOIN "Invoice" i ON i.id = ii.invoiceId
+                    WHERE {inv_where}''',
+                inv_params,
+            ).fetchall()
+
+            total_product_revenue = sum(float(r["price"] or 0) * int(r["qty"] or 1) for r in sales_rows)
+
+            prod_cat_map = {p["name"].strip().lower(): (p["category"] or "Autre") for p in products}
+
+            category_revenue_map = {}
+            for r in sales_rows:
+                p_name = str(r["productName"] or "").strip().lower()
+                cat = prod_cat_map.get(p_name, "Autre")
+                category_revenue_map[cat] = category_revenue_map.get(cat, 0.0) + (float(r["price"] or 0) * int(r["qty"] or 1))
+
+            categories_db = connection.execute(
+                'SELECT name FROM "ProductCategory" ORDER BY name COLLATE NOCASE ASC'
+            ).fetchall()
+            known_cats = [c["name"] for c in categories_db]
+            for p in products:
+                cat = p["category"] or "Autre"
+                if cat not in known_cats:
+                    known_cats.append(cat)
+
+            category_stats = []
+            for cat_name in known_cats:
+                prods_in_cat = [p for p in products if (p["category"] or "Autre") == cat_name]
+                cat_qty = sum(int(p["stockQty"] or 0) for p in prods_in_cat)
+                cat_val = sum(float(p["price"] or 0) * int(p["stockQty"] or 0) for p in prods_in_cat)
+                cat_rev = category_revenue_map.get(cat_name, 0.0)
+                category_stats.append({
+                    "name": cat_name,
+                    "productCount": len(prods_in_cat),
+                    "stockQty": cat_qty,
+                    "stockValue": round(cat_val, 2),
+                    "revenue": round(cat_rev, 2),
+                    "revenuePercentage": round((cat_rev / total_product_revenue * 100), 1) if total_product_revenue > 0 else 0,
+                    "stockValuePercentage": round((cat_val / total_stock_value * 100), 1) if total_stock_value > 0 else 0,
+                })
+
+            out_of_stock = [
+                {"id": p["id"], "name": p["name"], "category": p["category"], "stockQty": int(p["stockQty"] or 0), "price": float(p["price"] or 0)}
+                for p in products if int(p["stockQty"] or 0) <= 0
+            ]
+            low_stock = [
+                {"id": p["id"], "name": p["name"], "category": p["category"], "stockQty": int(p["stockQty"] or 0), "price": float(p["price"] or 0)}
+                for p in products if 1 <= int(p["stockQty"] or 0) < 5
+            ]
+
+            settings = connection.execute('SELECT stockAlertsEnabled FROM "ShopSettings" WHERE id = 1').fetchone()
+            alerts_enabled = bool(settings[0]) if settings and settings[0] is not None else True
+
+            return {
+                "totalStockValue": round(total_stock_value, 2),
+                "totalStockQuantity": total_stock_qty,
+                "totalStockRevenue": round(total_product_revenue, 2),
+                "categoryStats": category_stats,
+                "alerts": {
+                    "enabled": alerts_enabled,
+                    "outOfStockCount": len(out_of_stock),
+                    "lowStockCount": len(low_stock),
+                    "outOfStock": out_of_stock,
+                    "lowStock": low_stock,
+                },
+            }
+
+    @app.put("/api/stock/alerts-toggle")
+    async def toggle_stock_alerts(request: Request):
+        body = await request.json()
+        enabled = 1 if body.get("enabled", True) else 0
+        with get_store()._connect() as connection:
+            ensure_schema(connection)
+            connection.execute(
+                '''INSERT INTO "ShopSettings" (id, stockAlertsEnabled) VALUES (1, ?)
+                   ON CONFLICT(id) DO UPDATE SET stockAlertsEnabled = excluded.stockAlertsEnabled''',
+                (enabled,),
+            )
+        return {"enabled": bool(enabled)}
 
     @app.post("/api/system/reset-salon")
     def api_reset_salon(request: Request):
@@ -592,7 +909,17 @@ def create_app(store=None):
 
     @app.get("/api/stats")
     def get_stats(request: Request):
-        return dashboard_stats(get_store(), dict(request.query_params))
+        actor = authenticated_user(request)
+        query = dict(request.query_params)
+        if actor["role"] in {"MANAGER", "CASHIER"}:
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun shop n'est assigné à ce compte")
+            if query.get("shopType") and query["shopType"] != actor["shopType"]:
+                raise HTTPException(status_code=403, detail="Données hors de votre shop")
+            query["shopType"] = actor["shopType"]
+        if actor["role"] == "CASHIER":
+            query["cashierId"] = actor["id"]
+        return dashboard_stats(get_store(), query)
 
     @app.get("/api/dashboard-insights")
     def get_dashboard_insights(request: Request):
@@ -619,11 +946,35 @@ def create_app(store=None):
 
     @app.get("/api/z-report")
     def get_z_report(request: Request):
-        return z_report(get_store(), dict(request.query_params))
+        actor = authenticated_user(request)
+        if actor["role"] not in {"ADMIN", "MANAGER"}:
+            raise HTTPException(status_code=403, detail="Droits insuffisants")
+        query = dict(request.query_params)
+        if actor["role"] == "MANAGER":
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun shop n'est assigné à ce gérant")
+            if query.get("shopType") and query["shopType"] != actor["shopType"]:
+                raise HTTPException(status_code=403, detail="Données hors de votre shop")
+            query["shopType"] = actor["shopType"]
+        elif query.get("shopType") and query["shopType"] not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=400, detail="Shop invalide")
+        return z_report(get_store(), query)
 
     @app.get("/api/product-sales-report")
     def get_product_sales_report(request: Request):
-        return product_sales_report(get_store(), dict(request.query_params))
+        actor = authenticated_user(request)
+        if actor["role"] not in {"ADMIN", "MANAGER"}:
+            raise HTTPException(status_code=403, detail="Droits insuffisants")
+        query = dict(request.query_params)
+        if actor["role"] == "MANAGER":
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun shop n'est assigné à ce gérant")
+            if query.get("shopType") and query["shopType"] != actor["shopType"]:
+                raise HTTPException(status_code=403, detail="Données hors de votre shop")
+            query["shopType"] = actor["shopType"]
+        elif query.get("shopType") and query["shopType"] not in {"HOMME", "FEMME"}:
+            raise HTTPException(status_code=400, detail="Shop invalide")
+        return product_sales_report(get_store(), query)
 
     @app.get("/api/service-providers")
     def list_service_providers(request: Request):
@@ -794,7 +1145,13 @@ def create_app(store=None):
     @app.delete("/api/categories/{category_id}")
     def delete_category(category_id: str):
         with get_store()._connect() as connection:
+            ensure_schema(connection)
             connection.execute("BEGIN IMMEDIATE")
+            category = connection.execute(
+                'SELECT id FROM "Category" WHERE id = ?', (category_id,)
+            ).fetchone()
+            if category is None:
+                raise HTTPException(status_code=404, detail="Catégorie non trouvée")
             connection.execute('DELETE FROM "SubCategory" WHERE categoryId = ?', (category_id,))
             connection.execute('DELETE FROM "Category" WHERE id = ?', (category_id,))
         return {"message": "Catégorie supprimée avec succès"}

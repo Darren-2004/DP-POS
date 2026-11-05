@@ -3,7 +3,7 @@ import { PackageSearch, Printer, TrendingUp, RefreshCw } from 'lucide-react';
 import Button from '../../components/Button';
 import DateRangeFilter from '../../components/DateRangeFilter';
 import { EmptyState, ErrorState, LoadingState } from '../../components/DesignSystem';
-import { formatFCFA, getTodayDateStr } from '../../utils/helpers';
+import { apiFetch, formatFCFA, getTodayDateStr } from '../../utils/helpers';
 import { API_BASE } from '../../utils/constants';
 
 const SHOP_NAME = 'SALON DE BEAUTÉ';
@@ -49,7 +49,7 @@ export default function ProductSalesReport({
       const params = new URLSearchParams({ startDate, endDate });
       if (shopType) params.append('shopType', shopType);
       const url = `${API_BASE}/product-sales-report?${params.toString()}`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (!res.ok) { setError('Erreur lors de la récupération du rapport.'); return; }
       const data = await res.json();
       setReportData(data);
@@ -211,14 +211,16 @@ export default function ProductSalesReport({
                 {displayedReportData.products.length} prestations / produits · {displayedReportData.totalQuantity} actes vendus
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 rounded bg-[#b38059] text-white px-3.5 py-2 text-xs font-semibold transition hover:bg-[#9e6d47]"
-            >
-              <Printer className="h-4 w-4" />
-              Imprimer
-            </button>
+            {!combinedMode && (
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="flex items-center gap-1.5 rounded bg-[#b38059] text-white px-3.5 py-2 text-xs font-semibold transition hover:bg-[#9e6d47]"
+              >
+                <Printer className="h-4 w-4" />
+                Imprimer
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">

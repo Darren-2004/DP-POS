@@ -47,7 +47,7 @@ export default function CashierView({
   const fetchProducts = async () => {
     setProductsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/products`);
+      const res = await fetch(`${API_BASE}/products?inStockOnly=true`);
       if (res.ok) {
         const data = await res.json();
         setProducts(Array.isArray(data) ? data : []);
@@ -246,6 +246,7 @@ export default function CashierView({
 
       triggerPrint(invoiceData, printStationId);
       window.dispatchEvent(new CustomEvent('pos:dashboard-refresh'));
+      fetchProducts();
       showToast('Facture enregistrée et ticket imprimé !', 'success');
 
       // Reset cart

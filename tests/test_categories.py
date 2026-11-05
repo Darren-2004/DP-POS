@@ -40,6 +40,31 @@ class CategoryShopAssignmentTests(unittest.TestCase):
         self.assertEqual(duplicated.status_code, 201)
         self.assertEqual(duplicated.json()["shopType"], "HOMME")
 
+    def test_admin_can_delete_existing_service_category(self):
+        created = self.client.post(
+            "/api/categories",
+            json={"name": "Catégorie à supprimer", "shopType": "FEMME"},
+        )
+        category_id = created.json()["id"]
+        service = self.client.post(
+            "/api/subcategories",
+            json={"name": "Prestation à supprimer", "categoryId": category_id, "price": 5000},
+        )
+        self.assertEqual(service.status_code, 201, service.text)
+
+        deleted = self.client.delete(f"/api/categories/{category_id}")
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        remaining = self.client.get("/api/categories").json()
+        self.assertNotIn(category_id, [category["id"] for category in remaining])
+        self.assertNotIn(
+            service.json()["id"],
+            [sub["id"] for category in remaining for sub in category["subCategories"]],
+        )
+
+    def test_deleting_missing_service_category_returns_not_found(self):
+        response = self.client.delete("/api/categories/missing-category")
+        self.assertEqual(response.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

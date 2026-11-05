@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Trash2, Scissors, Package } from 'lucide-react';
+import { Search, Trash2, Scissors, Package, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '../components/DesignSystem';
 import { formatFCFA, cx } from '../utils/helpers';
 import CheckoutControls from './CheckoutControls';
@@ -70,15 +70,43 @@ export default function CheckoutWorkspace({
     return catMatch || subMatch;
   });
 
-  // Filter Products by shop and search
-  const filteredProducts = products.filter((prod) => {
-    if (activeShop !== 'ALL' && prod.shopType && prod.shopType !== 'ALL' && prod.shopType !== activeShop) {
-      return false;
+  const [selectedProductCategory, setSelectedProductCategory] = useState(null);
+
+  // Filter in-stock Products (stockQty > 0)
+  const inStockProducts = React.useMemo(() => {
+    return products.filter((prod) => {
+      if (activeShop !== 'ALL' && prod.shopType && prod.shopType !== 'ALL' && prod.shopType !== activeShop) {
+        return false;
+      }
+      return (Number(prod.stockQty) || 0) > 0;
+    });
+  }, [products, activeShop]);
+
+  // Product categories with in-stock item count
+  const availableProductCategories = React.useMemo(() => {
+    const map = {};
+    inStockProducts.forEach((prod) => {
+      const cat = prod.category || 'Stock';
+      map[cat] = (map[cat] || 0) + 1;
+    });
+    return Object.entries(map).map(([name, count]) => ({ name, count }));
+  }, [inStockProducts]);
+
+  // Filtered products for active search or selected category
+  const filteredProducts = React.useMemo(() => {
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      return inStockProducts.filter(
+        (prod) =>
+          prod.name.toLowerCase().includes(term) ||
+          (prod.category && prod.category.toLowerCase().includes(term))
+      );
     }
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return prod.name.toLowerCase().includes(term) || (prod.category && prod.category.toLowerCase().includes(term));
-  });
+    if (selectedProductCategory) {
+      return inStockProducts.filter((prod) => (prod.category || 'Stock') === selectedProductCategory);
+    }
+    return [];
+  }, [inStockProducts, searchTerm, selectedProductCategory]);
 
   const total = getCartTotal
     ? getCartTotal()
@@ -114,8 +142,8 @@ export default function CheckoutWorkspace({
             )}
           >
             <Package className="h-3.5 w-3.5" />
-            <span>Mèches & Stock</span>
-            {products.length > 0 && <span className="text-xs text-neutral-400">{products.length}</span>}
+            <span>Stock</span>
+            {inStockProducts.length > 0 && <span className="text-xs text-neutral-400">{inStockProducts.length}</span>}
           </button>
         </div>
 
@@ -126,7 +154,7 @@ export default function CheckoutWorkspace({
             <input
               type="search"
               aria-label="Rechercher une prestation ou un produit"
-              placeholder={activeCatalogTab === 'services' ? 'Rechercher une prestation...' : 'Rechercher mèches, cire, gel...'}
+              placeholder={activeCatalogTab === 'services' ? 'Rechercher une prestation...' : 'Rechercher un produit en stock...'}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full border-0 border-b border-transparent bg-transparent py-1 pl-6 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none"
@@ -190,32 +218,99 @@ export default function CheckoutWorkspace({
             )
           ) : /* PRODUCTS & STOCK */
           productsLoading && products.length === 0 ? (
-            <LoadingState label="Chargement des produits..." rows={5} className="border-0 bg-transparent p-2" />
-          ) : filteredProducts.length === 0 ? (
-            <EmptyState title="Aucun produit" description="Aucun produit ou mèche en stock." className="min-h-36 border-0 bg-transparent px-0" />
+            <LoadingState label="Chargement du stock..." rows={5} className="border-0 bg-transparent p-2" />
+          ) : inStockProducts.length === 0 ? (
+            <EmptyState
+              title="Stock épuisé"
+              description="Aucun produit en stock actuellement pour ce salon."
+              className="min-h-36 border-0 bg-transparent px-0"
+            />
+          ) : !searchTerm && !selectedProductCategory ? (
+            /* Category selection list */
+            <div className="divide-y divide-neutral-100 py-1">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                Catégories de stock
+              </p>
+              {availableProductCategories.map((cat) => (
+                <button
+                  key={cat.name}
+                  type="button"
+                  onClick={() => setSelectedProductCategory(cat.name)}
+                  className="flex w-full items-center justify-between py-2.5 px-1 text-left transition hover:bg-neutral-50 rounded"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-neutral-900">{cat.name}</p>
+                    <p className="text-xs text-neutral-400">
+                      {cat.count} article{cat.count > 1 ? 's' : ''} disponible{cat.count > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400" />
+                </button>
+              ))}
+            </div>
           ) : (
-            filteredProducts.map((prod) => (
-              <button
-                key={prod.id}
-                type="button"
-                onClick={() =>
-                  handleAddItemToCart({
-                    categoryName: prod.name,
-                    price: prod.price || 0,
-                    qty: 1,
-                    itemType: 'PRODUCT',
-                  })
-                }
-                disabled={!serverOnline}
-                className="flex w-full items-center justify-between gap-2 border-b border-neutral-200 py-2 text-left text-sm transition hover:bg-neutral-50 disabled:opacity-40 last:border-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-neutral-900">{prod.name}</p>
-                  <p className="truncate text-xs text-neutral-400">{prod.category || 'Stock'}</p>
+            /* Product items list (inside category or search) */
+            <div className="space-y-1">
+              {!searchTerm && selectedProductCategory && (
+                <div className="mb-2 flex items-center justify-between border-b border-neutral-100 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProductCategory(null)}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#b38059] hover:underline"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    <span>Toutes les catégories</span>
+                  </button>
+                  <span className="text-xs font-bold text-neutral-700">{selectedProductCategory}</span>
                 </div>
-                <span className="shrink-0 font-medium text-[#b38059]">{formatFCFA(prod.price)}</span>
-              </button>
-            ))
+              )}
+              {filteredProducts.length === 0 ? (
+                <EmptyState
+                  title="Aucun produit trouvé"
+                  description={searchTerm ? "Aucun produit ne correspond à cette recherche." : "Aucun article dans cette catégorie."}
+                  className="min-h-24 border-0 bg-transparent px-0"
+                />
+              ) : (
+                filteredProducts.map((prod) => {
+                  const qty = Number(prod.stockQty) || 0;
+                  const isLowStock = qty < 5;
+                  return (
+                    <button
+                      key={prod.id}
+                      type="button"
+                      onClick={() =>
+                        handleAddItemToCart({
+                          categoryName: prod.name,
+                          price: prod.price || 0,
+                          qty: 1,
+                          itemType: 'PRODUCT',
+                        })
+                      }
+                      disabled={!serverOnline}
+                      className="flex w-full items-center justify-between gap-2 border-b border-neutral-100 py-2.5 text-left text-sm transition hover:bg-neutral-50 disabled:opacity-40 last:border-0"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-neutral-900">{prod.name}</p>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <span className="text-[11px] text-neutral-400">{prod.category || 'Stock'}</span>
+                          {isLowStock ? (
+                            <span className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.2 text-[10px] font-bold text-amber-700">
+                              <AlertTriangle className="h-2.5 w-2.5" />
+                              Plus que {qty} en stock
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-neutral-500 font-medium">
+                              {qty} en stock
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="shrink-0 font-medium text-[#b38059]">{formatFCFA(prod.price)}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
           )}
         </div>
       </section>

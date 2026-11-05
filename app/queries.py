@@ -89,29 +89,48 @@ def list_invoices(store, query):
     paginated = "page" in query or "pageSize" in query
     clauses = []
     parameters = []
+    with store._connect() as connection:
+        invoice_columns = {
+            row["name"] for row in connection.execute('PRAGMA table_info("Invoice")')
+        }
+    cancellation_date = (
+        "COALESCE(i.cancelledAt, i.createdAt)"
+        if "cancelledAt" in invoice_columns
+        else "i.createdAt"
+    )
     day = query.get("date")
     if day:
         bounds = _local_day_bounds(day)
         if bounds:
-            clauses.append('i.createdAt BETWEEN ? AND ?')
+            clauses.append(
+                f'''(CASE WHEN i.status = 'CANCELLED' THEN {cancellation_date}
+                          ELSE i.createdAt END) BETWEEN ? AND ?'''
+            )
             parameters.extend(bounds)
     elif query.get("startDate") and query.get("endDate"):
         start = _local_day_bounds(query["startDate"])
         end = _local_day_bounds(query["endDate"])
         if start and end:
-            clauses.append('i.createdAt BETWEEN ? AND ?')
+            clauses.append(
+                f'''(CASE WHEN i.status = 'CANCELLED' THEN {cancellation_date}
+                          ELSE i.createdAt END) BETWEEN ? AND ?'''
+            )
             parameters.extend((start[0], end[1]))
 
     cashier_id = query.get("cashierId")
     if cashier_id:
-        with store._connect() as connection:
-            cashier = connection.execute('SELECT name FROM "User" WHERE id = ?', (cashier_id,)).fetchone()
-        if cashier and cashier["name"]:
-            clauses.append('(i.createdById = ? OR i.deliveryPerson LIKE ?)')
-            parameters.extend((cashier_id, f"%{cashier['name']}%"))
-        else:
-            clauses.append('i.createdById = ?')
+        if query.get("strictCashier") == "true":
+            clauses.append("i.createdById = ?")
             parameters.append(cashier_id)
+        else:
+            with store._connect() as connection:
+                cashier = connection.execute('SELECT name FROM "User" WHERE id = ?', (cashier_id,)).fetchone()
+            if cashier and cashier["name"]:
+                clauses.append('(i.createdById = ? OR i.deliveryPerson LIKE ?)')
+                parameters.extend((cashier_id, f"%{cashier['name']}%"))
+            else:
+                clauses.append('i.createdById = ?')
+                parameters.append(cashier_id)
 
     if query.get("shopType") and query["shopType"] != "ALL":
         clauses.append('i.shopType = ?')

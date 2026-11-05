@@ -54,6 +54,13 @@ class ReportParityTests(unittest.TestCase):
                     id TEXT PRIMARY KEY, reservationId TEXT, amount REAL, paymentMethod TEXT,
                     installmentNumber INTEGER, createdAt TEXT, createdById TEXT
                 );
+                CREATE TABLE "TrainingEnrollment" (
+                    id TEXT PRIMARY KEY, shopType TEXT
+                );
+                CREATE TABLE "TrainingPayment" (
+                    id TEXT PRIMARY KEY, enrollmentId TEXT, amount REAL, paymentMethod TEXT,
+                    status TEXT, createdAt TEXT, createdById TEXT
+                );
                 """
             )
 
@@ -119,6 +126,7 @@ class ReportParityTests(unittest.TestCase):
         self.assertEqual(report["count"], 4)
         self.assertEqual(report["cancelledCount"], 1)
         self.assertEqual(report["totalSales"], 1950)
+        self.assertEqual(report["resPaymentCount"], 1)
         self.assertEqual(report["payments"], {"CASH": 1000, "ONLINE": 800, "ORANGE_MONEY": 150})
 
     def test_product_report_includes_final_reservation_and_paid_delivery_items(self):

@@ -44,7 +44,7 @@ class ErrorBoundary extends React.Component {
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
-      const saved = localStorage.getItem('pos_user');
+      const saved = sessionStorage.getItem('pos_user');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -82,17 +82,7 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem('pos_user');
-      const savedView = localStorage.getItem('pos_view');
-      if (savedUser) {
-        const u = JSON.parse(savedUser);
-        return u.role === 'CASHIER' ? 'cashier' : 'admin';
-      }
-      return 'login';
-    } catch {
-      return 'login';
-    }
+    return 'login';
   });
 
   const roleView = currentUser ? (currentUser.role === 'CASHIER' ? 'cashier' : 'admin') : currentView;
@@ -114,10 +104,15 @@ export default function App() {
   }, [activeShop]);
 
   useEffect(() => {
+    localStorage.removeItem('pos_user');
+    localStorage.removeItem('pos_view');
+  }, []);
+
+  useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('pos_user', JSON.stringify(currentUser));
+      sessionStorage.setItem('pos_user', JSON.stringify(currentUser));
     } else {
-      localStorage.removeItem('pos_user');
+      sessionStorage.removeItem('pos_user');
     }
   }, [currentUser]);
 
@@ -152,7 +147,7 @@ export default function App() {
       setCurrentUser(null);
       setCurrentView('login');
       setActiveShop('ALL');
-      localStorage.removeItem('pos_user');
+      sessionStorage.removeItem('pos_user');
       localStorage.removeItem('pos_view');
       setToast({ message: 'Votre session a expiré. Veuillez vous reconnecter.', type: 'error' });
     };
@@ -248,7 +243,7 @@ export default function App() {
     setCurrentUser(null);
     setCurrentView('login');
     setActiveShop('ALL');
-    localStorage.removeItem('pos_user');
+    sessionStorage.removeItem('pos_user');
     localStorage.removeItem('pos_view');
   };
 

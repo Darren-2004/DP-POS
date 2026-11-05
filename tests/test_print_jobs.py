@@ -174,6 +174,83 @@ class PrintJobStoreTests(unittest.TestCase):
         self.assertIn(b"Chemise", receipt)
         self.assertIn(b"1 500 FCFA", receipt)
 
+    def test_receipt_renderer_prints_z_report_provider_totals(self):
+        receipt = render_escpos_receipt({
+            "invoiceData": {
+                "isZReport": True,
+                "zReport": {
+                    "periodLabel": "Le 04/10/2026",
+                    "totalSales": 12500,
+                    "payments": {"CASH": 10000, "ONLINE": 2500},
+                    "validatedCount": 4,
+                    "resPaymentCount": 1,
+                    "serviceProviders": [{
+                        "name": "Aminata",
+                        "shopType": "HOMME",
+                        "serviceCount": 3,
+                        "revenue": 7500,
+                    }],
+                },
+            }
+        })
+
+        self.assertIn(b"RAPPORT DE CLOTURE (Z)", receipt)
+        self.assertIn(b"PERFORMANCE DES PRESTATAIRES", receipt)
+        self.assertIn(b"Aminata", receipt)
+        self.assertIn(b"3 prestation(s)", receipt)
+        self.assertIn(b"7 500 FCFA", receipt)
+        self.assertIn(b"TOTAL 3 PRESTATION(S)", receipt)
+
+    def test_receipt_renderer_prints_reservation_advance_payment(self):
+        receipt = render_escpos_receipt({
+            "reservation": {
+                "reservationNo": "RES-001",
+                "totalAmount": 3000,
+                "payments": [{
+                    "amount": 1000,
+                    "paymentMethod": "CASH",
+                    "installmentNumber": 1,
+                }],
+            }
+        })
+
+        self.assertIn(b"RECU PROFORMA (RESERVATION)", receipt)
+        self.assertIn(b"HISTORIQUE DES VERSEMENTS", receipt)
+        self.assertIn(b"TOTAL PAYE:", receipt)
+        self.assertIn(b"1 000 FCFA", receipt)
+        self.assertIn(b"MONTANT PAYE CE JOUR", receipt)
+
+    def test_receipt_renderer_keeps_network_z_totals_separated_by_shop(self):
+        receipt = render_escpos_receipt({
+            "invoiceData": {
+                "isZReport": True,
+                "zReport": {
+                    "date": "Le 04/10/2026",
+                    "shopReports": [
+                        {
+                            "shopName": "Shop Homme",
+                            "totalSales": 1000,
+                            "payments": {"CASH": 1000},
+                            "serviceProviders": [{"name": "Aminata", "serviceCount": 1, "revenue": 700}],
+                        },
+                        {
+                            "shopName": "Shop Femme",
+                            "totalSales": 2000,
+                            "payments": {"ONLINE": 2000},
+                            "serviceProviders": [{"name": "Fatou", "serviceCount": 2, "revenue": 1500}],
+                        },
+                    ],
+                },
+            }
+        })
+
+        self.assertIn(b"SHOP HOMME", receipt)
+        self.assertIn(b"SHOP FEMME", receipt)
+        self.assertIn(b"Aminata", receipt)
+        self.assertIn(b"Fatou", receipt)
+        self.assertIn(b"TOTAL RESEAU:", receipt)
+        self.assertIn(b"3 000 FCFA", receipt)
+
     def test_receipt_renderer_keeps_footer_within_safe_paper_height(self):
         items = [
             {"categoryName": f"Article long {index:02d} " + "x" * 40, "qty": 1, "price": 1000}

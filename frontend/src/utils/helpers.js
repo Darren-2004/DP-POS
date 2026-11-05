@@ -25,7 +25,7 @@ export const apiFetch = (input, init = {}) => {
   const headers = new Headers(init.headers || {});
   let hasAuthorization = false;
   try {
-    const user = JSON.parse(localStorage.getItem('pos_user') || 'null');
+    const user = JSON.parse(sessionStorage.getItem('pos_user') || 'null');
     if (user?.accessToken) headers.set('Authorization', `Bearer ${user.accessToken}`);
   } catch {
     // Missing or malformed local session data should not prevent public requests.
@@ -328,7 +328,7 @@ const dispatchPrint = (htmlContent, payload, documentType, documentId) => {
 };
 
 const enqueuePrintJob = async (payload, documentType, documentId, htmlFallback = null) => {
-  const existingPrintJob = payload.printJob || payload.invoiceData?.printJob;
+  const existingPrintJob = payload.printJob || payload.invoiceData?.printJob || payload.reservation?.printJob;
   const stationId = existingPrintJob?.stationId || getCurrentPrintStationId();
   if (!stationId) {
     if (htmlFallback) {
@@ -380,6 +380,7 @@ export const triggerPrint = (invoiceData) => {
   isPrintingBusy = true;
 
   const isZ = invoiceData.isZReport;
+  const isTrainingPayment = invoiceData.isTrainingPayment === true;
 
   const clientNameStr = invoiceData.clientName || '';
   let clientPhoneStr = invoiceData.clientPhone || '';
@@ -405,66 +406,163 @@ export const triggerPrint = (invoiceData) => {
   else if (invoiceData.deliveryStatus === 'DELIVERED') deliveryStatusLabel = 'LIVRÉE';
   else if (invoiceData.deliveryStatus === 'CANCELLED') deliveryStatusLabel = 'ANNULÉE';
 
+  const zReports = isZ
+    ? (invoiceData.zReport.shopReports || [invoiceData.zReport])
+    : [];
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char]);
+
   const printHTML = isZ ? `
     ${renderBeautyHeader('RAPPORT DE CLÔTURE (Z)', 'SYNTHÈSE DE CAISSE')}
     <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
       <div style="display:flex;justify-content:space-between;margin:2px 0;">
         <span style="color:#000;">Date &amp; Heure :</span>
-        <span style="font-weight:600;color:#000;">${invoiceData.zReport.date} ${invoiceData.zReport.time}</span>
+        <span style="font-weight:600;color:#000;">${escapeHtml(invoiceData.zReport.date)} ${escapeHtml(invoiceData.zReport.time)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin:2px 0;">
         <span style="color:#000;">Opérateur :</span>
-        <span style="font-weight:600;color:#000;">${invoiceData.zReport.cashierName || invoiceData.createdBy?.name || 'Admin'}</span>
+        <span style="font-weight:600;color:#000;">${escapeHtml(invoiceData.zReport.cashierName || invoiceData.createdBy?.name || 'Admin')}</span>
       </div>
     </div>
 
-    <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin:6px 0;background:#fff;">
-      <div style="font-size:7.5pt;font-weight:800;letter-spacing:1px;color:#000;text-transform:uppercase;margin-bottom:4px;">SYNTHÈSE COMPTABLE</div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11pt;font-weight:800;color:#000;margin:4px 0;">
-        <span>TOTAL NET :</span>
-        <span style="font-size:12pt;">${Math.round(invoiceData.zReport.totalSales).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
-        <span>Espèces :</span>
-        <span style="font-weight:700;">${Math.round(invoiceData.zReport.totalCash || invoiceData.zReport.payments?.CASH || 0).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
-        <span>Mobile Money :</span>
-        <span style="font-weight:700;">${Math.round(invoiceData.zReport.totalOnline || invoiceData.zReport.payments?.ONLINE || 0).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
-        <span>Orange Money :</span>
-        <span style="font-weight:700;">${Math.round(invoiceData.zReport.payments?.ORANGE_MONEY || 0).toLocaleString('fr-FR')} FCFA</span>
-      </div>
-      <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
-        <span>Ventes Validées :</span>
-        <span style="font-weight:700;">${invoiceData.zReport.validatedCount}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
-        <span>Ventes Annulées :</span>
-        <span style="font-weight:700;color:#c93b3b;">${invoiceData.zReport.cancelledCount}</span>
-      </div>
-    </div>
-
-    ${(invoiceData.zReport.topSelling && invoiceData.zReport.topSelling.length > 0) ? `
+    ${zReports.map(report => `
       <div style="margin:6px 0;">
-        <div style="border-bottom:1.5px solid #2c1e14;padding-bottom:3px;margin-bottom:4px;font-size:7.5pt;font-weight:800;letter-spacing:0.8px;color:#2c1e14;text-transform:uppercase;">
-          RÉPARTITION PAR CATÉGORIE
+        <div style="border-bottom:2px solid #2c1e14;padding-bottom:3px;margin-bottom:4px;font-size:9pt;font-weight:800;letter-spacing:0.8px;color:#2c1e14;text-transform:uppercase;">
+          ${escapeHtml(report.shopName || report.shopType || 'RÉCAPITULATIF')}
         </div>
-        ${invoiceData.zReport.topSelling.map(cat => `
-          <div style="display:flex;justify-content:space-between;font-size:8pt;border-bottom:1px dashed #e2dbd4;padding:3px 0;">
-            <span style="color:#000;">${cat.name} (x${cat.quantity})</span>
-            <span style="font-weight:700;color:#000;">${Math.round(cat.revenue).toLocaleString('fr-FR')} FCFA</span>
+        <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:6px 8px;margin:6px 0;background:#fff;">
+          <div style="font-size:7.5pt;font-weight:800;letter-spacing:1px;color:#000;text-transform:uppercase;margin-bottom:4px;">SYNTHÈSE COMPTABLE</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11pt;font-weight:800;color:#000;margin:4px 0;">
+            <span>TOTAL ENCAISSÉ :</span>
+            <span style="font-size:12pt;">${Math.round(Number(report.totalSales ?? report.total) || 0).toLocaleString('fr-FR')} FCFA</span>
           </div>
-        `).join('')}
+          <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
+            <span>Espèces :</span>
+            <span style="font-weight:700;">${Math.round(report.totalCash || report.payments?.CASH || 0).toLocaleString('fr-FR')} FCFA</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
+            <span>Mobile Money :</span>
+            <span style="font-weight:700;">${Math.round(report.totalOnline || report.payments?.ONLINE || 0).toLocaleString('fr-FR')} FCFA</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
+            <span>Orange Money :</span>
+            <span style="font-weight:700;">${Math.round(report.payments?.ORANGE_MONEY || 0).toLocaleString('fr-FR')} FCFA</span>
+          </div>
+          <div style="border-top:1px dashed #d5cdc5;margin:4px 0;"></div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
+            <span>Ventes validées :</span>
+            <span style="font-weight:700;">${Number(report.validatedCount ?? report.count) || 0}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
+            <span>Acomptes de réservation :</span>
+            <span style="font-weight:700;">${Number(report.resPaymentCount) || 0}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
+            <span>Paiements formation :</span>
+            <span style="font-weight:700;">${Number(report.trainingPaymentCount) || 0} — ${Math.round(Number(report.trainingTotal) || 0).toLocaleString('fr-FR')} FCFA</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;color:#000;">
+            <span>Ventes annulées :</span>
+            <span style="font-weight:700;color:#c93b3b;">${Number(report.cancelledCount) || 0}</span>
+          </div>
+        </div>
+
+        ${(report.serviceProviders || []).length ? `
+          <div style="margin:6px 0;">
+            <div style="border-bottom:1.5px solid #2c1e14;padding-bottom:3px;margin-bottom:4px;font-size:7.5pt;font-weight:800;letter-spacing:0.8px;color:#2c1e14;text-transform:uppercase;">
+              PERFORMANCE DES PRESTATAIRES
+            </div>
+            ${(report.serviceProviders || []).map(provider => `
+              <div style="border-bottom:1px dashed #e2dbd4;padding:3px 0;font-size:7.5pt;color:#000;">
+                <div style="font-weight:700;">${escapeHtml(provider.name || '')}</div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span>${Number(provider.serviceCount) || 0} prestation(s)</span>
+                  <span style="font-weight:700;">${Math.round(Number(provider.revenue) || 0).toLocaleString('fr-FR')} FCFA</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        ${(report.topSelling || []).length ? `
+          <div style="margin:6px 0;">
+            <div style="border-bottom:1.5px solid #2c1e14;padding-bottom:3px;margin-bottom:4px;font-size:7.5pt;font-weight:800;letter-spacing:0.8px;color:#2c1e14;text-transform:uppercase;">
+              RÉPARTITION PAR CATÉGORIE
+            </div>
+            ${report.topSelling.map(cat => `
+              <div style="display:flex;justify-content:space-between;font-size:8pt;border-bottom:1px dashed #e2dbd4;padding:3px 0;">
+                <span style="color:#000;">${escapeHtml(cat.name)} (x${cat.quantity})</span>
+                <span style="font-weight:700;color:#000;">${Math.round(cat.revenue).toLocaleString('fr-FR')} FCFA</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `).join('')}
+
+    ${zReports.length > 1 ? `
+      <div style="display:flex;justify-content:space-between;border-top:2px solid #2c1e14;padding-top:5px;margin-top:8px;font-size:9pt;font-weight:800;color:#000;">
+        <span>TOTAL RÉSEAU :</span>
+        <span>${Math.round(zReports.reduce((sum, report) => sum + (Number(report.totalSales ?? report.total) || 0), 0)).toLocaleString('fr-FR')} FCFA</span>
       </div>
     ` : ''}
 
     <div style="text-align:center;margin-top:10px;font-size:7.5pt;font-weight:800;color:#000;letter-spacing:1px;border-top:1px dashed #d5cdc5;padding-top:6px;">
       --- FIN DU RAPPORT DE CLÔTURE Z ---
     </div>
+  ` : isTrainingPayment ? `
+    ${renderBeautyHeader('REÇU DE PAIEMENT FORMATION')}
+    <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:7px 8px;margin:5px 0;font-size:8pt;line-height:1.5;">
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span>N° reçu :</span>
+        <strong style="font-family:monospace;">${escapeHtml(invoiceData.paymentNumber)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span>Date :</span>
+        <strong>${escapeHtml(new Date(invoiceData.createdAt).toLocaleString('fr-FR'))}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span>Apprenant :</span>
+        <strong>${escapeHtml(invoiceData.studentName)}</strong>
+      </div>
+      ${invoiceData.studentPhone ? `<div style="display:flex;justify-content:space-between;margin:2px 0;"><span>Téléphone :</span><strong>${escapeHtml(invoiceData.studentPhone)}</strong></div>` : ''}
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span>Formation :</span>
+        <strong>${escapeHtml(invoiceData.courseName)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span>Shop :</span>
+        <strong>${escapeHtml(invoiceData.shopName || invoiceData.shopType)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin:2px 0;">
+        <span>Enregistré par :</span>
+        <strong>${escapeHtml(invoiceData.createdBy?.name || 'Équipe de gestion')}</strong>
+      </div>
+    </div>
+    ${renderPaymentMethodHTML(invoiceData.paymentMethod)}
+    <div style="border:1.5px solid #2c1e14;border-radius:6px;padding:8px;margin-top:6px;background:#fff;">
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;">
+        <span>Tranche n° :</span><strong>${Number(invoiceData.installmentNumber) || 1}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10pt;font-weight:800;margin:5px 0;">
+        <span>PAYÉ CE JOUR :</span>
+        <span style="font-size:12pt;">${Math.round(Number(invoiceData.amount) || 0).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+      <div style="border-top:1px dashed #d5cdc5;margin:5px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;">
+        <span>Prix de la formation :</span><strong>${Math.round(Number(invoiceData.coursePrice) || 0).toLocaleString('fr-FR')} FCFA</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8pt;margin:2px 0;">
+        <span>Total payé :</span><strong>${Math.round(Number(invoiceData.totalPaidAfter) || 0).toLocaleString('fr-FR')} FCFA</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:9pt;font-weight:800;margin-top:3px;">
+        <span>RESTE À PAYER :</span>
+        <span>${Math.round(Number(invoiceData.remainingAfter) || 0).toLocaleString('fr-FR')} FCFA</span>
+      </div>
+    </div>
+    ${renderBeautyFooter('Conservez ce reçu comme justificatif de paiement.')}
   ` : `
     ${renderBeautyHeader(isDelivery ? 'BON DE LIVRAISON' : (isReservation ? 'FACTURE DE RÉSERVATION' : 'TICKET DE CAISSE'))}
     <div style="background:#fbf9f6;border:1px solid #ebe5df;border-radius:6px;padding:6px 8px;margin:5px 0;font-size:8pt;line-height:1.4;">
@@ -552,10 +650,6 @@ export const triggerPrint = (invoiceData) => {
 
 export const triggerProformaPrint = (reservation) => {
   const now = Date.now();
-  if (isPrintingBusy || now - lastPrintTimestamp < 3000) {
-    showToast("⏳ Impression déjà en cours, veuillez patienter...", "info");
-    return;
-  }
   isPrintingBusy = true;
   lastPrintTimestamp = now;
 

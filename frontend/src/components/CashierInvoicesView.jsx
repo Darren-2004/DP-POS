@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Printer, Eye, X, Receipt, Calendar, CheckCircle, XCircle } from 'lucide-react';
 import { inputCls } from './Field';
 import StatusChip from './StatusChip';
-import { formatFCFA, triggerPrint, getPaymentMethodLabel, getTodayDateStr, cx, isReservationInvoice } from '../utils/helpers';
+import { apiFetch, formatFCFA, triggerPrint, getPaymentMethodLabel, getTodayDateStr, cx, isReservationInvoice } from '../utils/helpers';
 import { API_BASE } from '../utils/constants';
 import { EmptyState, ErrorState, LoadingState } from './DesignSystem';
 import { useShopNames } from './ShopNamesContext';
@@ -17,7 +17,7 @@ export default function CashierInvoicesView({ currentUser }) {
   
   // Date and status filters
   const [selectedDate, setSelectedDate] = useState(getTodayDateStr());
-  const [selectedStatus, setSelectedStatus] = useState('VALIDATED');
+  const [selectedStatus, setSelectedStatus] = useState('ALL');
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -40,11 +40,11 @@ export default function CashierInvoicesView({ currentUser }) {
       if (selectedDate) {
         url += `&date=${selectedDate}`;
       }
-      if (selectedStatus && selectedStatus !== 'all') {
+      if (selectedStatus && selectedStatus !== 'ALL' && selectedStatus !== 'all') {
         url += `&status=${selectedStatus}`;
       }
       
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (res.ok) {
         const data = await res.json();
         setInvoices(Array.isArray(data) ? data : []);
@@ -159,7 +159,7 @@ export default function CashierInvoicesView({ currentUser }) {
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="bg-transparent border-b border-neutral-200 text-neutral-900 text-xs font-medium py-1 outline-none cursor-pointer focus:border-neutral-900"
           >
-            <option value="all">Tous statuts</option>
+            <option value="ALL">Tous statuts</option>
             <option value="VALIDATED">Validés</option>
             <option value="CANCELLED">Annulés</option>
           </select>
@@ -248,6 +248,11 @@ export default function CashierInvoicesView({ currentUser }) {
                         tone={inv.status === 'VALIDATED' ? 'emerald' : 'red'}
                         label={inv.status === 'VALIDATED' ? 'Validée' : 'Annulée'}
                       />
+                      {inv.status === 'CANCELLED' && inv.cancellationReason && (
+                        <div className="mt-1 max-w-48 truncate text-[10px] text-rose-700" title={inv.cancellationReason}>
+                          Motif : {inv.cancellationReason}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -345,6 +350,28 @@ export default function CashierInvoicesView({ currentUser }) {
                     label={selectedInvoice.status === 'VALIDATED' ? 'Validée' : 'Annulée'}
                   />
                 </div>
+                {selectedInvoice.status === 'CANCELLED' && (
+                  <>
+                    <div className="flex justify-between py-1">
+                      <span className="text-neutral-500">Annulée le</span>
+                      <span className="font-medium text-neutral-900">
+                        {selectedInvoice.cancelledAt
+                          ? new Date(selectedInvoice.cancelledAt).toLocaleString('fr-FR')
+                          : 'Date non disponible'}
+                      </span>
+                    </div>
+                    <div className="rounded bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+                      <span className="font-semibold">Motif de l’annulation :</span>{' '}
+                      {selectedInvoice.cancellationReason || 'Non renseigné'}
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-neutral-500">Annulée par</span>
+                      <span className="font-medium text-neutral-900">
+                        {selectedInvoice.cancelledBy?.name || 'Gérant'}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Items List */}

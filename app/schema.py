@@ -1,5 +1,6 @@
 import re
 import sqlite3
+import uuid
 
 
 TABLES = {
@@ -31,12 +32,21 @@ TABLES = {
         shopType TEXT NOT NULL CHECK (shopType IN ('HOMME', 'FEMME')),
         createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )''',
+    "ProductCategory": '''CREATE TABLE IF NOT EXISTS "ProductCategory" (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        shopType TEXT NOT NULL DEFAULT 'ALL',
+        createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )''',
     "Product": '''CREATE TABLE IF NOT EXISTS "Product" (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         price REAL NOT NULL DEFAULT 0,
         category TEXT NOT NULL DEFAULT 'PRODUIT',
         shopType TEXT NOT NULL DEFAULT 'ALL',
+        stockQty INTEGER NOT NULL DEFAULT 0,
+        costPrice REAL NOT NULL DEFAULT 0,
+        categoryId TEXT,
         createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )''',
     "Invoice": '''CREATE TABLE IF NOT EXISTS "Invoice" (
@@ -60,6 +70,7 @@ TABLES = {
         paidAt TEXT,
         status TEXT NOT NULL DEFAULT 'VALIDATED',
         cancellationReason TEXT,
+        cancelledAt TEXT,
         createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         createdById TEXT NOT NULL REFERENCES "User"(id),
         cancelledById TEXT REFERENCES "User"(id)
@@ -106,6 +117,62 @@ TABLES = {
         paymentMethod TEXT NOT NULL DEFAULT 'CASH',
         installmentNumber INTEGER NOT NULL,
         createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        createdById TEXT NOT NULL REFERENCES "User"(id)
+    )''',
+    "TrainingCourse": '''CREATE TABLE IF NOT EXISTS "TrainingCourse" (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL DEFAULT '',
+        price REAL NOT NULL CHECK (price > 0),
+        duration TEXT NOT NULL DEFAULT '',
+        isActive INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        createdById TEXT NOT NULL REFERENCES "User"(id)
+    )''',
+    "TrainingEnrollment": '''CREATE TABLE IF NOT EXISTS "TrainingEnrollment" (
+        id TEXT PRIMARY KEY,
+        studentName TEXT NOT NULL,
+        studentPhone TEXT NOT NULL DEFAULT '',
+        studentEmail TEXT NOT NULL DEFAULT '',
+        courseId TEXT NOT NULL REFERENCES "TrainingCourse"(id),
+        courseName TEXT NOT NULL,
+        coursePrice REAL NOT NULL CHECK (coursePrice > 0),
+        shopType TEXT NOT NULL CHECK (shopType IN ('HOMME', 'FEMME')),
+        nextDueDate TEXT,
+        requestKey TEXT UNIQUE,
+        status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'WITHDRAWN')),
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        createdById TEXT NOT NULL REFERENCES "User"(id)
+    )''',
+    "TrainingPayment": '''CREATE TABLE IF NOT EXISTS "TrainingPayment" (
+        id TEXT PRIMARY KEY,
+        paymentNumber TEXT NOT NULL UNIQUE,
+        enrollmentId TEXT NOT NULL REFERENCES "TrainingEnrollment"(id),
+        amount REAL NOT NULL CHECK (amount > 0),
+        totalPaidAfter REAL NOT NULL,
+        remainingAfter REAL NOT NULL,
+        paymentMethod TEXT NOT NULL DEFAULT 'CASH',
+        installmentNumber INTEGER NOT NULL CHECK (installmentNumber > 0),
+        status TEXT NOT NULL DEFAULT 'VALIDATED' CHECK (status IN ('VALIDATED', 'VOIDED')),
+        createdAt TEXT NOT NULL,
+        createdById TEXT NOT NULL REFERENCES "User"(id),
+        voidedAt TEXT,
+        voidedById TEXT REFERENCES "User"(id),
+        voidReason TEXT,
+        requestKey TEXT UNIQUE
+    )''',
+    "TrainingAudit": '''CREATE TABLE IF NOT EXISTS "TrainingAudit" (
+        id TEXT PRIMARY KEY,
+        enrollmentId TEXT REFERENCES "TrainingEnrollment"(id),
+        courseId TEXT REFERENCES "TrainingCourse"(id),
+        paymentId TEXT REFERENCES "TrainingPayment"(id),
+        shopType TEXT CHECK (shopType IN ('HOMME', 'FEMME')),
+        action TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '{}',
+        createdAt TEXT NOT NULL,
+        actorName TEXT NOT NULL DEFAULT '',
         createdById TEXT NOT NULL REFERENCES "User"(id)
     )''',
     "Client": '''CREATE TABLE IF NOT EXISTS "Client" (
@@ -178,6 +245,16 @@ ADDITIVE_COLUMNS = {
         "createdAt": "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
         "createdById": "TEXT",
     },
+    "TrainingPayment": {
+        "totalPaidAfter": "REAL NOT NULL DEFAULT 0",
+        "remainingAfter": "REAL NOT NULL DEFAULT 0",
+    },
+    "TrainingEnrollment": {
+        "requestKey": "TEXT",
+    },
+    "TrainingAudit": {
+        "actorName": "TEXT NOT NULL DEFAULT ''",
+    },
     "Invoice": {
         "clientPhone": "TEXT",
         "shopType": "TEXT NOT NULL DEFAULT 'FEMME'",
@@ -194,6 +271,7 @@ ADDITIVE_COLUMNS = {
         "paidAt": "TEXT",
         "status": "TEXT NOT NULL DEFAULT 'VALIDATED'",
         "cancellationReason": "TEXT",
+        "cancelledAt": "TEXT",
         "cancelledById": "TEXT",
     },
     "InvoiceItem": {
@@ -202,12 +280,21 @@ ADDITIVE_COLUMNS = {
         "providerId": "TEXT",
         "providerName": "TEXT",
     },
+    "Product": {
+        "stockQty": "INTEGER NOT NULL DEFAULT 0",
+        "costPrice": "REAL NOT NULL DEFAULT 0",
+        "categoryId": "TEXT",
+    },
+    "ShopSettings": {
+        "stockAlertsEnabled": "INTEGER NOT NULL DEFAULT 1",
+    },
 }
 
 
 INDEXES = (
     'CREATE UNIQUE INDEX IF NOT EXISTS User_name_key ON "User"(name)',
     'CREATE UNIQUE INDEX IF NOT EXISTS Category_name_key ON "Category"(name)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS ProductCategory_name_key ON "ProductCategory"(name)',
     'CREATE UNIQUE INDEX IF NOT EXISTS Invoice_invoiceNumber_key ON "Invoice"(invoiceNumber)',
     'CREATE UNIQUE INDEX IF NOT EXISTS Reservation_reservationNo_key ON "Reservation"(reservationNo)',
     'CREATE UNIQUE INDEX IF NOT EXISTS Client_name_key ON "Client"(name)',
@@ -221,7 +308,13 @@ INDEXES = (
     'CREATE INDEX IF NOT EXISTS Reservation_scheduledAt_idx ON "Reservation"(scheduledAt)',
     'CREATE INDEX IF NOT EXISTS ReservationPayment_createdAt_idx ON "ReservationPayment"(createdAt)',
     'CREATE INDEX IF NOT EXISTS ReservationPayment_reservationId_idx ON "ReservationPayment"(reservationId)',
+    'CREATE INDEX IF NOT EXISTS TrainingEnrollment_shop_status_idx ON "TrainingEnrollment"(shopType, status)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS TrainingEnrollment_requestKey_key ON "TrainingEnrollment"(requestKey)',
+    'CREATE INDEX IF NOT EXISTS TrainingPayment_createdAt_status_idx ON "TrainingPayment"(createdAt, status)',
+    'CREATE INDEX IF NOT EXISTS TrainingPayment_enrollmentId_idx ON "TrainingPayment"(enrollmentId)',
+    'CREATE INDEX IF NOT EXISTS TrainingAudit_createdAt_idx ON "TrainingAudit"(createdAt)',
     'CREATE INDEX IF NOT EXISTS Product_name_idx ON "Product"(name)',
+    'CREATE INDEX IF NOT EXISTS Product_category_idx ON "Product"(category)',
 )
 
 
@@ -286,6 +379,27 @@ def ensure_schema(connection):
             if not all(column in existing_columns for column in columns):
                 continue
             connection.execute(statement)
+
+        # Ensure default product categories exist
+        has_prod_cats = connection.execute('SELECT COUNT(*) FROM "ProductCategory"').fetchone()[0]
+        if has_prod_cats == 0:
+            # First collect existing categories from Product
+            existing_cats = [
+                row[0]
+                for row in connection.execute('SELECT DISTINCT category FROM "Product" WHERE category IS NOT NULL AND TRIM(category) != \'\'').fetchall()
+            ]
+            defaults = ['Mèches', 'Produits capillaires', 'Beauté & Onglerie', 'Soins & Crèmes', 'Accessoires', 'Consommables', 'Autre']
+            combined = []
+            for c in existing_cats + defaults:
+                cleaned = str(c).strip()
+                if cleaned and cleaned not in combined:
+                    combined.append(cleaned)
+            for cat_name in combined:
+                connection.execute(
+                    'INSERT OR IGNORE INTO "ProductCategory" (id, name, shopType) VALUES (?, ?, ?)',
+                    (str(uuid.uuid4()), cat_name, 'ALL')
+                )
+
         connection.commit()
     except Exception:
         if connection.in_transaction:
