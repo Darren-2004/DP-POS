@@ -655,10 +655,19 @@ def create_app(store=None):
 
     @app.post("/api/service-providers", status_code=201)
     async def create_service_provider(request: Request):
-        require_admin(request)
+        actor = authenticated_user(request)
+        if actor["role"] == "MANAGER":
+            if actor["shopType"] not in {"HOMME", "FEMME"}:
+                raise HTTPException(status_code=403, detail="Aucun salon n'est assigné à ce compte")
+            shop_type = actor["shopType"]
+        elif actor["role"] == "ADMIN":
+            shop_type = None
+        else:
+            raise HTTPException(status_code=403, detail="Droits administrateur ou gérant requis")
         body = await request.json()
         name = str(body.get("name") or "").strip()
-        shop_type = str(body.get("shopType") or "").strip()
+        if actor["role"] == "ADMIN":
+            shop_type = str(body.get("shopType") or "").strip()
         if not name or len(name) > 100:
             raise HTTPException(status_code=400, detail="Le nom du prestataire est requis (100 caractères maximum)")
         if shop_type not in {"HOMME", "FEMME"}:

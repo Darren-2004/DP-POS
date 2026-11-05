@@ -61,18 +61,21 @@ export default function Categories({ categories = [], fetchCategories, loading =
 
   const [isSaving, setIsSaving] = useState(false);
   const isAdmin = currentUser?.role === 'ADMIN';
+  const canViewProviders = isAdmin || isShopManager;
 
   const fetchServiceProviders = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!canViewProviders) return;
     setProvidersError('');
     try {
-      const res = await apiFetch(`${API_BASE}/service-providers`);
+      const params = new URLSearchParams();
+      if (isShopManager && managerShopType) params.set('shopType', managerShopType);
+      const res = await apiFetch(`${API_BASE}/service-providers?${params.toString()}`);
       const data = await readProviderResponse(res);
       setServiceProviders(Array.isArray(data) ? data : []);
     } catch (fetchError) {
       setProvidersError(fetchError.message || 'Erreur réseau lors du chargement des prestataires.');
     }
-  }, [isAdmin]);
+  }, [canViewProviders, isShopManager, managerShopType]);
 
   useEffect(() => {
     fetchServiceProviders();
@@ -89,7 +92,10 @@ export default function Categories({ categories = [], fetchCategories, loading =
       const res = await apiFetch(`${API_BASE}/service-providers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, shopType: newProviderShop }),
+        body: JSON.stringify({
+          name,
+          shopType: isShopManager ? managerShopType : newProviderShop,
+        }),
       });
       await readProviderResponse(res);
       setNewProviderName('');
@@ -332,12 +338,16 @@ export default function Categories({ categories = [], fetchCategories, loading =
         }
       />
 
-      {isAdmin && (
+      {canViewProviders && (
         <section className="space-y-4 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
           <div>
-            <h2 className="text-sm font-bold text-neutral-900">Prestataires par salon</h2>
+            <h2 className="text-sm font-bold text-neutral-900">
+              {isShopManager ? `Prestataires de ${shopNames[managerShopType] || 'votre salon'}` : 'Prestataires par salon'}
+            </h2>
             <p className="mt-1 text-xs text-neutral-500">
-              Les caissiers ne verront que les prestataires de leur salon. Leur nom reste dans le détail des anciens tickets.
+              {isShopManager
+                ? 'Les prestataires ajoutés sont automatiquement rattachés à votre salon.'
+                : 'Les caissiers ne verront que les prestataires de leur salon. Leur nom reste dans le détail des anciens tickets.'}
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -351,17 +361,19 @@ export default function Categories({ categories = [], fetchCategories, loading =
                 className="mt-1 w-full rounded border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
               />
             </label>
-            <label className="text-xs font-medium text-neutral-600">
-              Salon
-              <select
-                value={newProviderShop}
-                onChange={(e) => setNewProviderShop(e.target.value)}
-                className="mt-1 block rounded border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
-              >
-                <option value="HOMME">{shopNames.HOMME}</option>
-                <option value="FEMME">{shopNames.FEMME}</option>
-              </select>
-            </label>
+            {isAdmin && (
+              <label className="text-xs font-medium text-neutral-600">
+                Salon
+                <select
+                  value={newProviderShop}
+                  onChange={(e) => setNewProviderShop(e.target.value)}
+                  className="mt-1 block rounded border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 outline-none focus:border-[#b38059]"
+                >
+                  <option value="HOMME">{shopNames.HOMME}</option>
+                  <option value="FEMME">{shopNames.FEMME}</option>
+                </select>
+              </label>
+            )}
             <button
               type="button"
               onClick={createServiceProvider}
@@ -376,7 +388,7 @@ export default function Categories({ categories = [], fetchCategories, loading =
             <ul className="divide-y divide-neutral-200 border-y border-neutral-200">
               {serviceProviders.map((provider) => (
                 <li key={provider.id} className="flex items-center justify-between gap-3 py-2 text-xs">
-                  {editingProviderId === provider.id ? (
+                  {isAdmin && editingProviderId === provider.id ? (
                     <>
                       <input
                         type="text"
@@ -418,28 +430,32 @@ export default function Categories({ categories = [], fetchCategories, loading =
                       <span className="ml-auto text-neutral-500">
                         {provider.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingProviderId(provider.id);
-                          setEditProviderName(provider.name);
-                          setEditProviderShop(provider.shopType);
-                        }}
-                        className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
-                        aria-label={`Modifier ${provider.name}`}
-                        title="Modifier le nom ou le salon"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPendingDeleteProvider(provider)}
-                        className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
-                        aria-label={`Supprimer ${provider.name}`}
-                        title="Supprimer"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProviderId(provider.id);
+                              setEditProviderName(provider.name);
+                              setEditProviderShop(provider.shopType);
+                            }}
+                            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
+                            aria-label={`Modifier ${provider.name}`}
+                            title="Modifier le nom ou le salon"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteProvider(provider)}
+                            className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+                            aria-label={`Supprimer ${provider.name}`}
+                            title="Supprimer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </li>

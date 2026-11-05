@@ -82,6 +82,52 @@ class ServiceProviderApiTests(unittest.TestCase):
             403,
         )
 
+    def test_manager_can_add_provider_only_to_own_shop_and_view_own_stats(self):
+        femme = self._create_provider("Fatou", "FEMME")
+        created = self.client.post(
+            "/api/service-providers",
+            headers=self.manager_headers,
+            json={"name": "Aminata", "shopType": "FEMME"},
+        )
+
+        self.assertEqual(created.status_code, 201)
+        provider = created.json()
+        self.assertEqual(provider["shopType"], "HOMME")
+        self.assertEqual(
+            self.client.get("/api/service-providers", headers=self.manager_headers).json(),
+            [provider],
+        )
+
+        stats = self.client.get(
+            "/api/service-provider-stats",
+            headers=self.manager_headers,
+        )
+        self.assertEqual(stats.status_code, 200)
+        self.assertEqual({row["shopType"] for row in stats.json()["providers"]}, {"HOMME"})
+        self.assertEqual(
+            self.client.get(
+                "/api/service-provider-stats?shopType=FEMME",
+                headers=self.manager_headers,
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.put(
+                f"/api/service-providers/{provider['id']}",
+                headers=self.manager_headers,
+                json={"name": "Unauthorized", "shopType": "FEMME"},
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.delete(
+                f"/api/service-providers/{provider['id']}",
+                headers=self.manager_headers,
+            ).status_code,
+            403,
+        )
+        self.assertEqual(femme["shopType"], "FEMME")
+
     def test_session_token_is_accepted_by_another_app_instance_sharing_database(self):
         with patch.dict(os.environ, {"POS_SESSION_SECRET": ""}):
             with TestClient(create_app(self.store)) as first_app:

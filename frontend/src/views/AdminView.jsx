@@ -80,10 +80,12 @@ export default function AdminView({
 
   useEffect(() => {
     let active = true;
-    if (!isAdmin) return undefined;
+    if (!isAdmin && !isManager) return undefined;
     const fetchServiceProviders = async () => {
       try {
-        const response = await apiFetch(`${API_BASE}/service-providers`);
+        const params = new URLSearchParams();
+        if (currentShopType) params.set('shopType', currentShopType);
+        const response = await apiFetch(`${API_BASE}/service-providers?${params.toString()}`);
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.detail || data.error || `Erreur serveur (HTTP ${response.status}).`);
@@ -103,7 +105,7 @@ export default function AdminView({
     return () => {
       active = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, isManager, currentShopType]);
 
   const refreshDashboardData = useCallback(async (
     startDate = filterStartDate,
@@ -408,7 +410,7 @@ export default function AdminView({
             userRole={currentUser?.role}
             serviceProviders={serviceProviders}
             providerId={dashboardProviderId}
-            setProviderId={isAdmin ? setDashboardProviderId : undefined}
+            setProviderId={isAdmin || isManager ? setDashboardProviderId : undefined}
             providerFilterError={providerFilterError}
             onScopeChange={isAdmin ? (scope) => {
               if (scope === 'global') setAdminTab('global');
@@ -430,7 +432,7 @@ export default function AdminView({
             setFilterDate={setFilterDate}
             serviceProviders={serviceProviders}
             providerId={invoiceProviderId}
-            setProviderId={isAdmin ? setInvoiceProviderId : undefined}
+            setProviderId={isAdmin || isManager ? setInvoiceProviderId : undefined}
             providerFilterError={providerFilterError}
             users={users}
             shopType={currentShopType}
