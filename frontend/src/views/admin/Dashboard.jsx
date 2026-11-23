@@ -331,9 +331,9 @@ export default function Dashboard({
   const followUpClients = dashboardInsights?.followUpClients || [];
   const upcomingAppointments = dashboardInsights?.upcomingAppointments || [];
   return (
-    <div className="space-y-6 bg-white pb-12">
+    <div className="min-w-0 space-y-4 bg-white pb-8 sm:space-y-6 sm:pb-12">
       {/* Colored Header Banner (No Gradient) */}
-      <div className="rounded-xl border border-[#e8dcd2] bg-[#faf6f2] p-5 shadow-2xs">
+      <div className="rounded-xl border border-[#e8dcd2] bg-[#faf6f2] p-3 shadow-2xs sm:p-5">
         <PageHeader
           eyebrow="PILOTAGE & PERFORMANCE COMMERCIALE"
           title={`Tableau de Bord – ${activeShopLabel}`}
@@ -346,7 +346,7 @@ export default function Dashboard({
       </div>
 
       {/* Filter Toolbar (No Gradient) */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3.5">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 sm:gap-4 sm:p-3.5">
         <div className="flex flex-wrap items-center gap-4 text-xs">
           <DateRangeFilter
             startDate={startDate}
@@ -463,7 +463,7 @@ export default function Dashboard({
       {/* Solid Color KPI Cards (No Gradients) */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* KPI 1: Chiffre d'Affaires with Yesterday Percentage Comparison */}
-        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-5 shadow-xs">
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-xs sm:p-5">
           <div className="flex items-center justify-between text-neutral-600">
             <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
               Chiffre d'Affaires
@@ -503,7 +503,7 @@ export default function Dashboard({
         </div>
 
         {/* KPI 2: Factures réalisées */}
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-5 shadow-xs">
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-xs sm:p-5">
           <div className="flex items-center justify-between text-neutral-600">
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">
               Factures réalisées
@@ -522,7 +522,7 @@ export default function Dashboard({
         </div>
 
         {/* KPI 3: Espèces (Liquide) */}
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-xs">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-xs sm:p-5">
           <div className="flex items-center justify-between text-neutral-600">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-900">
               Espèces (Liquide)
@@ -541,7 +541,7 @@ export default function Dashboard({
         </div>
 
         {/* KPI 4: Mobile Money & Orange */}
-        <div className="rounded-xl border border-orange-200 bg-orange-50/70 p-5 shadow-xs">
+        <div className="rounded-xl border border-orange-200 bg-orange-50/70 p-4 shadow-xs sm:p-5">
           <div className="flex items-center justify-between text-neutral-600">
             <span className="text-xs font-bold uppercase tracking-wider text-orange-900">
               Paiements Digitaux
@@ -646,9 +646,9 @@ export default function Dashboard({
       </div>
 
       {/* Row: Dual Line Chart (Shop 1 vs Shop 2 by Months or Weekdays) + Pie Chart (Total Revenue by Shop) */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-3 sm:gap-6">
         {/* Comparative Dual Line Chart (2 Cols) */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs lg:col-span-2">
+        <div className="min-w-0 rounded-xl border border-neutral-200 bg-white p-3 shadow-xs sm:p-5 lg:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 pb-3 mb-4">
             <div>
               <h3 className="text-sm font-bold text-neutral-900">
@@ -716,9 +716,9 @@ export default function Dashboard({
       </div>
 
       {/* Bottom Row: Categories, Top Services, Top Products */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-3 sm:gap-6">
         {/* Category Breakdown */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
+        <div className="min-w-0 rounded-xl border border-neutral-200 bg-white p-3 shadow-xs sm:p-5">
           <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-4">
             <div>
               <h3 className="text-sm font-bold text-neutral-900">CA par Catégorie</h3>
@@ -740,7 +740,7 @@ export default function Dashboard({
         </div>
 
         {/* Top 10 Services */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
+        <div className="min-w-0 rounded-xl border border-neutral-200 bg-white p-3 shadow-xs sm:p-5">
           <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-4">
             <div>
               <h3 className="text-sm font-bold text-neutral-900">Top Prestations</h3>
@@ -762,7 +762,7 @@ export default function Dashboard({
         </div>
 
         {/* Top 10 Stock Products */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
+        <div className="min-w-0 rounded-xl border border-neutral-200 bg-white p-3 shadow-xs sm:p-5">
           <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-4">
             <div>
               <h3 className="text-sm font-bold text-neutral-900">Top Produits & Mèches</h3>
@@ -812,7 +812,7 @@ export default function Dashboard({
             />
           ) : (
             <>
-              <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs">
+              <div className="rounded-xl border border-neutral-200 bg-white p-3 shadow-xs sm:p-5">
                 <h3 className="mb-1 text-xs font-bold text-neutral-900">Tendance mensuelle du chiffre d’affaires</h3>
                 <p className="mb-4 text-xs text-neutral-500">{new Date().getFullYear()} — comparaison des deux salons</p>
                 <DualLineChart

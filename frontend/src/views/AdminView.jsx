@@ -324,9 +324,9 @@ export default function AdminView({
       ];
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-white">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white lg:flex-row">
       {/* Light Warm Solid Sidebar (No Gradients, Matches White Background) */}
-      <aside className="w-64 shrink-0 bg-[#faf8f5] text-neutral-800 border-r border-[#e8e2d8] p-4 flex flex-col justify-between overflow-y-auto">
+      <aside className="hidden w-64 shrink-0 flex-col justify-between overflow-y-auto border-r border-[#e8e2d8] bg-[#faf8f5] p-4 text-neutral-800 lg:flex">
         <div className="space-y-5">
           {/* Brand Header Card */}
           <div className="rounded-xl border border-[#e8e2d8] bg-white p-3 shadow-2xs">
@@ -403,8 +403,45 @@ export default function AdminView({
         </div>
       </aside>
 
+      <div className="shrink-0 border-b border-[#e8e2d8] bg-[#faf8f5] lg:hidden">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#b38059] text-white">
+            <Store className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-xs font-extrabold text-neutral-900">Dimitri Perfect</div>
+            <div className="truncate text-[10px] font-semibold text-[#9c6a41]">
+              {navigationSections.flatMap((section) => section.items).find((tab) => tab.id === adminTab)?.label}
+            </div>
+          </div>
+        </div>
+        <nav aria-label="Navigation administration" className="flex gap-1 overflow-x-auto px-2 pb-2">
+          {navigationSections.flatMap((section) => section.items).map((tab) => {
+            const isActive = adminTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setInvoicePage(1);
+                  setAdminTab(tab.id);
+                }}
+                aria-current={isActive ? 'page' : undefined}
+                className={cx(
+                  'flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold',
+                  isActive ? 'bg-[#b38059] text-white' : 'bg-white text-neutral-700'
+                )}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
       {/* Main Panel Content */}
-      <main className="flex-1 min-h-0 overflow-y-auto bg-white p-6">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-white p-3 sm:p-4 lg:p-6">
         {/* Analytics / Dashboard View */}
         {(adminTab === 'dashboard' || adminTab === 'global' || adminTab === 'shop1' || adminTab === 'shop2') && (
           <Dashboard

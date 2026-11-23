@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Trash2, Scissors, Package, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react';
+import { Search, Trash2, Scissors, Package, ChevronRight, ChevronLeft, AlertTriangle, Plus, X } from 'lucide-react';
 import { EmptyState, ErrorState, LoadingState } from '../components/DesignSystem';
 import { formatFCFA, cx } from '../utils/helpers';
 import CheckoutControls from './CheckoutControls';
@@ -44,6 +44,11 @@ export default function CheckoutWorkspace({
   setPrintStationId,
   stationSelectionRequired,
   currentUser,
+  baskets = [],
+  activeBasketId,
+  onSelectBasket,
+  onCreateBasket,
+  onCloseBasket,
   handleValidateAndPrint,
   handleConfirmReservation,
   activeShop = 'ALL',
@@ -113,7 +118,7 @@ export default function CheckoutWorkspace({
     : cart.reduce((acc, it) => acc + (parseFloat(it.price) || 0) * (parseInt(it.qty) || 1), 0);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-white xl:grid-cols-[340px_1px_minmax(0,1fr)]">
+    <div className="grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(0,0.8fr)_minmax(0,1.2fr)] overflow-hidden bg-white xl:grid-cols-[340px_1px_minmax(0,1fr)] xl:grid-rows-1">
       {/* LEFT: Catalogue (Services + Produits) */}
       <section className="flex min-h-0 flex-col overflow-hidden" aria-label="Catalogue Salon">
         {/* Catalog Tabs */}
@@ -321,23 +326,65 @@ export default function CheckoutWorkspace({
       {/* RIGHT: Panier & Facturation */}
       <section className="flex min-h-0 flex-col overflow-hidden bg-white" aria-label="Ticket en cours">
         {/* Header panier */}
-        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-sm font-semibold text-neutral-900">Ticket en cours</h2>
-            <span className="text-xs text-neutral-400">
-              {cart.length} {cart.length <= 1 ? 'article' : 'articles'}
-            </span>
+        <div className="shrink-0 border-b border-neutral-200">
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h2 className="truncate text-sm font-semibold text-neutral-900">{clientName.trim() || 'Ticket en cours'}</h2>
+              <span className="shrink-0 text-xs text-neutral-400">
+                {cart.length} {cart.length <= 1 ? 'article' : 'articles'}
+              </span>
+            </div>
+            {cart.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearCart}
+                className="flex shrink-0 items-center gap-1 text-xs text-neutral-500 transition hover:text-red-600"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Vider</span>
+              </button>
+            )}
           </div>
-          {cart.length > 0 && (
+          <nav aria-label="Paniers ouverts" className="flex items-center gap-1 overflow-x-auto px-3 pb-2">
+            {baskets.map((basket, index) => {
+              const isActive = basket.id === activeBasketId;
+              const label = basket.clientName.trim() || `Panier ${index + 1}`;
+              return (
+                <div key={basket.id} className={`flex max-w-48 shrink-0 items-center rounded-lg border text-[11px] ${isActive ? 'border-[#b38059] bg-[#faf6f2] text-[#825534]' : 'border-neutral-200 bg-white text-neutral-600'}`}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectBasket(basket.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    disabled={isSubmittingOrder}
+                    title={label}
+                    className="min-w-0 truncate px-2.5 py-1.5 font-semibold disabled:cursor-not-allowed"
+                  >
+                    {label}
+                  </button>
+                  {baskets.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => onCloseBasket(basket.id)}
+                      aria-label={`Fermer le panier ${label}`}
+                      disabled={isSubmittingOrder}
+                      className="mr-1 rounded p-0.5 hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
-              onClick={handleClearCart}
-              className="flex items-center gap-1 text-xs text-neutral-500 transition hover:text-red-600"
+              onClick={onCreateBasket}
+              disabled={isSubmittingOrder}
+              className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-lg border border-dashed border-neutral-300 px-2.5 text-[11px] font-semibold text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>Vider</span>
+              <Plus className="h-3 w-3" />
+              Nouveau panier
             </button>
-          )}
+          </nav>
         </div>
 
         {/* Cart Table */}

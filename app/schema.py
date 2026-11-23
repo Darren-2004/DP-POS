@@ -251,6 +251,8 @@ ADDITIVE_COLUMNS = {
     },
     "TrainingEnrollment": {
         "requestKey": "TEXT",
+        "completedAt": "TEXT",
+        "deletedAt": "TEXT",
     },
     "TrainingAudit": {
         "actorName": "TEXT NOT NULL DEFAULT ''",

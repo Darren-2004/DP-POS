@@ -21,16 +21,99 @@ export default function CashierView({
   stationSelectionRequired,
   activeShop = 'ALL',
 }) {
-  const [cart, setCart] = useState([]);
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
-  const [selectedMethods, setSelectedMethods] = useState(['CASH']);
-  const [methodAmounts, setMethodAmounts] = useState({ CASH: '', ONLINE: '', ORANGE_MONEY: '' });
-  const [showReservationMode, setShowReservationMode] = useState(false);
-  const [reservationAdvanceInput, setReservationAdvanceInput] = useState('');
-  const [reservationDate, setReservationDate] = useState('');
-  const [reservationTime, setReservationTime] = useState('');
+  const [baskets, setBaskets] = useState([{
+    id: 'basket-1',
+    cart: [],
+    clientName: '',
+    clientPhone: '',
+    selectedMethods: ['CASH'],
+    methodAmounts: { CASH: '', ONLINE: '', ORANGE_MONEY: '' },
+    showReservationMode: false,
+    reservationAdvanceInput: '',
+    reservationDate: '',
+    reservationTime: '',
+  }]);
+  const [activeBasketId, setActiveBasketId] = useState('basket-1');
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const activeBasket = baskets.find((basket) => basket.id === activeBasketId) || baskets[0];
+  const updateActiveBasket = (field, value) => {
+    setBaskets((currentBaskets) => currentBaskets.map((basket) => (
+      basket.id === activeBasketId
+        ? { ...basket, [field]: typeof value === 'function' ? value(basket[field]) : value }
+        : basket
+    )));
+  };
+  const cart = activeBasket.cart;
+  const clientName = activeBasket.clientName;
+  const clientPhone = activeBasket.clientPhone;
+  const selectedMethods = activeBasket.selectedMethods;
+  const methodAmounts = activeBasket.methodAmounts;
+  const showReservationMode = activeBasket.showReservationMode;
+  const reservationAdvanceInput = activeBasket.reservationAdvanceInput;
+  const reservationDate = activeBasket.reservationDate;
+  const reservationTime = activeBasket.reservationTime;
+  const setCart = (value) => updateActiveBasket('cart', value);
+  const setClientName = (value) => updateActiveBasket('clientName', value);
+  const setClientPhone = (value) => updateActiveBasket('clientPhone', value);
+  const setSelectedMethods = (value) => updateActiveBasket('selectedMethods', value);
+  const setMethodAmounts = (value) => updateActiveBasket('methodAmounts', value);
+  const setShowReservationMode = (value) => updateActiveBasket('showReservationMode', value);
+  const setReservationAdvanceInput = (value) => updateActiveBasket('reservationAdvanceInput', value);
+  const setReservationDate = (value) => updateActiveBasket('reservationDate', value);
+  const setReservationTime = (value) => updateActiveBasket('reservationTime', value);
+
+  const createBasket = (values = {}) => {
+    const basket = {
+      id: `basket-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      cart: [],
+      clientName: '',
+      clientPhone: '',
+      selectedMethods: ['CASH'],
+      methodAmounts: { CASH: '', ONLINE: '', ORANGE_MONEY: '' },
+      showReservationMode: false,
+      reservationAdvanceInput: '',
+      reservationDate: '',
+      reservationTime: '',
+      ...values,
+    };
+    setBaskets((currentBaskets) => [...currentBaskets, basket]);
+    setActiveBasketId(basket.id);
+  };
+
+  const handleSelectBasket = (basketId) => {
+    if (!isSubmittingOrder) setActiveBasketId(basketId);
+  };
+
+  const handleCreateBasket = () => {
+    if (!isSubmittingOrder) createBasket();
+  };
+
+  const handleCloseBasket = (basketId) => {
+    if (baskets.length <= 1 || isSubmittingOrder) return;
+    const basketToClose = baskets.find((basket) => basket.id === basketId);
+    if (!basketToClose) return;
+    if ((basketToClose.cart.length || basketToClose.clientName.trim()) &&
+        !window.confirm(`Fermer le panier de ${basketToClose.clientName.trim() || 'ce client'} ? Les éléments non enregistrés seront perdus.`)) {
+      return;
+    }
+    const basketIndex = baskets.findIndex((basket) => basket.id === basketId);
+    const remaining = baskets.filter((basket) => basket.id !== basketId);
+    setBaskets(remaining);
+    if (activeBasketId === basketId) {
+      setActiveBasketId(remaining[Math.max(0, basketIndex - 1)].id);
+    }
+  };
+
+  const finishActiveBasket = () => {
+    const finishedIndex = baskets.findIndex((basket) => basket.id === activeBasketId);
+    const remaining = baskets.filter((basket) => basket.id !== activeBasketId);
+    if (remaining.length) {
+      setBaskets(remaining);
+      setActiveBasketId(remaining[Math.min(finishedIndex, remaining.length - 1)].id);
+      return;
+    }
+    createBasket();
+  };
 
   // Products from /api/products
   const [products, setProducts] = useState([]);
@@ -249,12 +332,7 @@ export default function CashierView({
       fetchProducts();
       showToast('Facture enregistrée et ticket imprimé !', 'success');
 
-      // Reset cart
-      setCart([]);
-      setSelectedMethods(['CASH']);
-      setMethodAmounts({ CASH: '', ONLINE: '', ORANGE_MONEY: '' });
-      setClientName('');
-      setClientPhone('');
+      finishActiveBasket();
     } catch {
       showToast('Erreur réseau lors de la facturation', 'error');
     } finally {
@@ -320,11 +398,7 @@ export default function CashierView({
       }
       showToast('Rendez-vous enregistré avec succès !', 'success');
 
-      setCart([]);
-      setShowReservationMode(false);
-      setReservationAdvanceInput('');
-      setClientName('');
-      setClientPhone('');
+      finishActiveBasket();
     } catch {
       showToast('Erreur réseau', 'error');
     } finally {
@@ -334,8 +408,6 @@ export default function CashierView({
 
   // Transfer reservation to active checkout cart
   const handleTransferToCart = (resObj) => {
-    setClientName(resObj.clientName || '');
-    setClientPhone(resObj.clientPhone || '');
     const advanceAlreadyPaid = Number(resObj.totalPaid || resObj.advanceAmount || 0);
 
     const cartItems = resObj.items && resObj.items.length > 0
@@ -366,7 +438,11 @@ export default function CashierView({
       });
     }
 
-    setCart(cartItems);
+    createBasket({
+      cart: cartItems,
+      clientName: resObj.clientName || '',
+      clientPhone: resObj.clientPhone || '',
+    });
     if (setActiveTab) setActiveTab('sale');
     const msg = advanceAlreadyPaid > 0
       ? `Rendez-vous de ${resObj.clientName} chargé en caisse (Acompte de ${formatFCFA(advanceAlreadyPaid)} déduit) !`
@@ -417,6 +493,11 @@ export default function CashierView({
           setPrintStationId={setPrintStationId}
           stationSelectionRequired={stationSelectionRequired}
           currentUser={currentUser}
+          baskets={baskets}
+          activeBasketId={activeBasketId}
+          onSelectBasket={handleSelectBasket}
+          onCreateBasket={handleCreateBasket}
+          onCloseBasket={handleCloseBasket}
           handleValidateAndPrint={handleValidateAndPrint}
           handleConfirmReservation={handleConfirmReservation}
           activeShop={activeShop}

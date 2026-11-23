@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, BookOpen, Check, Clock3, FilePlus2, Pencil, Printer, RefreshCw, Search, Users, X } from 'lucide-react';
+import { AlertCircle, BookOpen, Check, ChevronLeft, ChevronRight, Clock3, FilePlus2, Pencil, Printer, RefreshCw, Search, Trash2, Users, X } from 'lucide-react';
 import { ErrorState, LoadingState } from '../../components/DesignSystem';
 import { apiFetch, formatFCFA, getTodayDateStr, getPaymentMethodLabel, showToast, triggerPrint } from '../../utils/helpers';
 import { API_BASE } from '../../utils/constants';
 import { useShopNames } from '../../components/ShopNamesContext';
 
 const emptyCourse = { name: '', description: '', price: '', duration: '' };
+const ENROLLMENTS_PER_PAGE = 20;
 const emptyEnrollment = {
   studentName: '',
   studentPhone: '',
@@ -67,6 +68,15 @@ function auditDescription(entry) {
   if (entry.action === 'ENROLLMENT_CREATED') {
     return `Inscription de ${student} à la formation ${course} — enregistrée par ${actor}.`;
   }
+  if (entry.action === 'ENROLLMENT_CANCELLED') {
+    return `Annulation de la formation de ${student} — paiements conservés dans le chiffre d’affaires; effectuée par ${actor}.`;
+  }
+  if (entry.action === 'ENROLLMENT_COMPLETED') {
+    return `Formation de ${student} terminée — enregistrée par ${actor}.`;
+  }
+  if (entry.action === 'ENROLLMENT_DELETED') {
+    return `Suppression de ${student} — ${formatFCFA(details.deductedRevenue || 0)} déduits du chiffre d’affaires; effectuée par ${actor}.`;
+  }
   if (entry.action === 'DUE_DATE_UPDATED') {
     return `Échéance de ${student} pour la formation ${course} mise à jour par ${actor} : ${details.nextDueDate || 'supprimée'}.`;
   }
@@ -97,8 +107,8 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
   const { shopNames } = useShopNames();
   const isAdmin = currentUser?.role === 'ADMIN';
   const today = getTodayDateStr();
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [scope, setScope] = useState(shopType || '');
   const [courses, setCourses] = useState([]);
   const [enrollments, setEnrollments] = useState([]);
@@ -106,6 +116,9 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
+  const [activePage, setActivePage] = useState(1);
+  const [completedPage, setCompletedPage] = useState(1);
+  const [updatingEnrollment, setUpdatingEnrollment] = useState('');
   const [courseForm, setCourseForm] = useState(emptyCourse);
   const [editingCourse, setEditingCourse] = useState(null);
   const [enrollmentForm, setEnrollmentForm] = useState({
@@ -160,7 +173,7 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
   }, [loadData]);
 
   const activeCourses = courses.filter((course) => course.isActive);
-  const visibleEnrollments = useMemo(() => {
+  const filteredEnrollments = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     if (!term) return enrollments;
     return enrollments.filter((enrollment) =>
@@ -168,6 +181,21 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
         .some((value) => String(value || '').toLocaleLowerCase().includes(term))
     );
   }, [enrollments, search]);
+  const activeEnrollments = filteredEnrollments.filter(
+    (enrollment) => enrollment.status === 'ACTIVE' && !enrollment.completedAt
+  );
+  const completedEnrollments = filteredEnrollments.filter(
+    (enrollment) => enrollment.status === 'ACTIVE' && enrollment.completedAt
+  );
+  const activePageCount = Math.max(1, Math.ceil(activeEnrollments.length / ENROLLMENTS_PER_PAGE));
+  const completedPageCount = Math.max(1, Math.ceil(completedEnrollments.length / ENROLLMENTS_PER_PAGE));
+  const displayedActivePage = Math.min(activePage, activePageCount);
+  const displayedCompletedPage = Math.min(completedPage, completedPageCount);
+
+  useEffect(() => {
+    setActivePage(1);
+    setCompletedPage(1);
+  }, [scope, search]);
 
   const handleCourseSubmit = async (event) => {
     event.preventDefault();
@@ -290,6 +318,34 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
     }
   };
 
+  const handleEnrollmentAction = async (enrollment, action) => {
+    const paidAmount = formatFCFA(enrollment.totalPaid);
+    const messages = {
+      cancel: `Annuler la formation de ${enrollment.studentName} ? Les paiements déjà reçus (${paidAmount}) resteront dans le chiffre d’affaires.`,
+      complete: `Marquer la formation de ${enrollment.studentName} comme terminée ?`,
+      delete: `Supprimer ${enrollment.studentName} ? Ses paiements (${paidAmount}) seront régularisés et déduits du chiffre d’affaires. L’opération sera conservée dans l’historique comptable.`,
+    };
+    if (!window.confirm(messages[action])) return;
+
+    setUpdatingEnrollment(enrollment.id);
+    try {
+      const path = `/training/enrollments/${enrollment.id}${action === 'delete' ? '' : `/${action}`}`;
+      await requestJson(path, { method: action === 'delete' ? 'DELETE' : 'POST' });
+      const messagesByAction = {
+        cancel: 'Formation annulée; les paiements restent comptabilisés.',
+        complete: 'Formation marquée comme terminée.',
+        delete: 'Apprenant supprimé; ses paiements ont été déduits du chiffre d’affaires.',
+      };
+      showToast(messagesByAction[action], 'success');
+      window.dispatchEvent(new CustomEvent('pos:dashboard-refresh'));
+      await loadData();
+    } catch (error) {
+      showToast(error.message || 'Impossible de modifier cette inscription.', 'error');
+    } finally {
+      setUpdatingEnrollment('');
+    }
+  };
+
   const saveDueDate = async (enrollment) => {
     try {
       await requestJson(`/training/enrollments/${enrollment.id}/due-date`, {
@@ -302,6 +358,113 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
     } catch (error) {
       showToast(error.message || 'Impossible de mettre à jour l’échéance.', 'error');
     }
+  };
+
+  const renderEnrollmentTable = (title, rows, page, pageCount, setPage, completed = false) => {
+    const start = rows.length ? (page - 1) * ENROLLMENTS_PER_PAGE : 0;
+    const pageRows = rows.slice(start, start + ENROLLMENTS_PER_PAGE);
+    const firstItem = rows.length ? start + 1 : 0;
+    const lastItem = Math.min(start + ENROLLMENTS_PER_PAGE, rows.length);
+
+    return (
+      <section key={title} className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-bold text-neutral-900">{title}</h2>
+            <p className="text-[11px] text-neutral-500">
+              {completed ? 'Formations terminées' : 'Apprenants actuellement en formation'} · 20 dossiers maximum par page.
+            </p>
+          </div>
+          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-neutral-600">{rows.length} dossier(s)</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px] text-left text-xs">
+            <thead className="bg-white text-[10px] uppercase tracking-wider text-neutral-500">
+              <tr><th className="px-4 py-3">Apprenant / formation</th><th className="px-4 py-3">Shop</th><th className="px-4 py-3 text-right">Tarif</th><th className="px-4 py-3 text-right">Payé</th><th className="px-4 py-3 text-right">Solde</th><th className="px-4 py-3">Échéance</th><th className="px-4 py-3">Actions</th></tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {pageRows.map((enrollment) => {
+                const overdue = enrollment.nextDueDate && enrollment.nextDueDate < today && enrollment.remaining > 0;
+                const expanded = expandedEnrollment === enrollment.id;
+                const updating = updatingEnrollment === enrollment.id;
+                return (
+                  <React.Fragment key={enrollment.id}>
+                    <tr className={overdue ? 'bg-rose-50/50' : 'hover:bg-neutral-50'}>
+                      <td className="px-4 py-3">
+                        <button type="button" onClick={() => setExpandedEnrollment(expanded ? '' : enrollment.id)} className="text-left">
+                          <div className="font-bold text-neutral-900">{enrollment.studentName}</div>
+                          <div className="text-[10px] text-neutral-500">{enrollment.courseName}{enrollment.studentPhone ? ` · ${enrollment.studentPhone}` : ''}</div>
+                          <div className="text-[10px] text-[#9c6a41]">{enrollment.payments.length} tranche(s) · Inscrit par {enrollment.registeredBy}</div>
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">{enrollment.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatFCFA(enrollment.coursePrice)}</td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">{formatFCFA(enrollment.totalPaid)}</td>
+                      <td className="px-4 py-3 text-right font-mono font-bold">{formatFCFA(enrollment.remaining)}</td>
+                      <td className="px-4 py-3">
+                        <div className={`mb-1 flex items-center gap-1 ${overdue ? 'font-bold text-rose-700' : 'text-neutral-600'}`}>
+                          {overdue ? <AlertCircle className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}
+                          {overdue ? 'En retard' : enrollment.nextDueDate || 'Non définie'}
+                        </div>
+                        <div className="flex gap-1">
+                          <input type="date" value={dueDateDraft[enrollment.id] ?? enrollment.nextDueDate ?? ''} onChange={(event) => setDueDateDraft({ ...dueDateDraft, [enrollment.id]: event.target.value })} className="w-32 rounded border border-neutral-200 px-1 py-1 text-[10px]" />
+                          <button type="button" title="Enregistrer l’échéance" onClick={() => saveDueDate(enrollment)} className="rounded border border-neutral-200 p-1 hover:bg-neutral-100"><Check className="h-3 w-3" /></button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          <button type="button" disabled={!enrollment.remaining || enrollment.status !== 'ACTIVE'} onClick={() => { setPayingEnrollment(enrollment); setPaymentForm({ amount: '', paymentMethod: 'CASH' }); setPaymentRequestKey(requestId()); }} className="rounded-lg bg-[#b38059] px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-40">Encaisser</button>
+                          {!completed && <button type="button" disabled={updating} onClick={() => handleEnrollmentAction(enrollment, 'complete')} className="rounded-lg border border-emerald-200 px-2 py-1.5 text-[10px] font-semibold text-emerald-700 disabled:opacity-40">Terminer</button>}
+                          {!completed && <button type="button" disabled={updating} onClick={() => handleEnrollmentAction(enrollment, 'cancel')} className="rounded-lg border border-amber-200 px-2 py-1.5 text-[10px] font-semibold text-amber-700 disabled:opacity-40">Annuler</button>}
+                          <button type="button" disabled={updating} onClick={() => handleEnrollmentAction(enrollment, 'delete')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1.5 text-[10px] font-semibold text-rose-700 disabled:opacity-40"><Trash2 className="h-3 w-3" />Supprimer</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr><td colSpan="7" className="bg-neutral-50 px-4 py-3">
+                        <div className="mb-2 flex items-center gap-2 text-[11px] font-bold text-neutral-700"><Users className="h-3.5 w-3.5" />Historique détaillé — {enrollment.studentName}</div>
+                        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+                          <table className="w-full min-w-[650px] text-left text-[11px]">
+                            <thead className="border-b bg-neutral-50 text-neutral-500"><tr><th className="px-3 py-2">Reçu / date</th><th className="px-3 py-2">Tranche</th><th className="px-3 py-2">Mode</th><th className="px-3 py-2 text-right">Montant</th><th className="px-3 py-2">État / opérateur</th><th className="px-3 py-2">Actions</th></tr></thead>
+                            <tbody className="divide-y divide-neutral-100">
+                              {enrollment.payments.map((payment) => (
+                                <tr key={payment.id} className={payment.status === 'VOIDED' ? 'text-neutral-400 line-through' : ''}>
+                                  <td className="px-3 py-2"><div className="font-mono font-bold">{payment.paymentNumber}</div><div>{new Date(payment.createdAt).toLocaleString('fr-FR')}</div></td>
+                                  <td className="px-3 py-2">{payment.installmentNumber}</td>
+                                  <td className="px-3 py-2">{getPaymentMethodLabel(payment.paymentMethod)}</td>
+                                  <td className="px-3 py-2 text-right font-mono font-bold">{formatFCFA(payment.amount)}</td>
+                                  <td className="px-3 py-2">{payment.status === 'VOIDED' ? `Régularisé: ${payment.voidReason}` : `Validé par ${payment.createdByName}`}</td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex gap-2">
+                                      {payment.status === 'VALIDATED' && <button type="button" title="Réimprimer le reçu" onClick={() => triggerPrint(paymentReceipt(enrollment, payment, shopNames))} className="rounded p-1 text-[#9c6a41] hover:bg-neutral-100"><Printer className="h-3.5 w-3.5" /></button>}
+                                      {payment.status === 'VALIDATED' && <button type="button" onClick={() => { setVoidTarget({ enrollment, payment }); setVoidReason(''); }} className="text-[10px] font-semibold text-rose-600 hover:underline">Régulariser</button>}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                              {!enrollment.payments.length && <tr><td colSpan="6" className="px-3 py-3 text-center text-neutral-500">Aucun versement; l’inscription reste à régler.</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td></tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {!pageRows.length && !loading && <tr><td colSpan="7" className="px-4 py-8 text-center text-neutral-500">Aucun apprenant trouvé pour ces critères.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 text-[11px] text-neutral-500">
+          <span>{firstItem}–{lastItem} sur {rows.length}</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2.5 py-1.5 font-semibold disabled:opacity-40"><ChevronLeft className="h-3 w-3" />Précédent</button>
+            <span>Page {page} / {pageCount}</span>
+            <button type="button" disabled={page >= pageCount} onClick={() => setPage(page + 1)} className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2.5 py-1.5 font-semibold disabled:opacity-40">Suivant<ChevronRight className="h-3 w-3" /></button>
+          </div>
+        </div>
+      </section>
+    );
   };
 
   return (
@@ -354,7 +517,7 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Metric label="Formations actives" value={summary?.courseCount || 0} tone="blue" />
         <Metric label="Apprenants inscrits" value={summary?.learnerCount || 0} note={`${summary?.enrollmentCount || 0} inscription(s) active(s)`} tone="neutral" />
-        <Metric label="Encaissé sur la période" value={formatFCFA(summary?.periodRevenue || 0)} tone="green" />
+        <Metric label={startDate && endDate ? 'Encaissé sur la période' : 'Total encaissé'} value={formatFCFA(summary?.periodRevenue || 0)} tone="green" />
         <Metric label="Reste à percevoir" value={formatFCFA(summary?.remainingBalance || 0)} note={`Montant attendu: ${formatFCFA(summary?.expectedRevenue || 0)}`} tone="amber" />
         <Metric label="Échéances dépassées" value={summary?.overdueCount || 0} tone={summary?.overdueCount ? 'rose' : 'neutral'} />
       </section>
@@ -427,87 +590,8 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
-          <div>
-            <h2 className="text-sm font-bold text-neutral-900">Apprenants & historique des paiements</h2>
-            <p className="text-[11px] text-neutral-500">Les tarifs sont figés à l’inscription; les paiements validés ne peuvent pas dépasser le solde.</p>
-          </div>
-          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-neutral-600">{visibleEnrollments.length} dossier(s)</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-xs">
-            <thead className="bg-white text-[10px] uppercase tracking-wider text-neutral-500">
-              <tr><th className="px-4 py-3">Apprenant / formation</th><th className="px-4 py-3">Shop</th><th className="px-4 py-3 text-right">Tarif</th><th className="px-4 py-3 text-right">Payé</th><th className="px-4 py-3 text-right">Solde</th><th className="px-4 py-3">Échéance</th><th className="px-4 py-3">Actions</th></tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {visibleEnrollments.map((enrollment) => {
-                const overdue = enrollment.nextDueDate && enrollment.nextDueDate < today && enrollment.remaining > 0;
-                const expanded = expandedEnrollment === enrollment.id;
-                return (
-                  <React.Fragment key={enrollment.id}>
-                    <tr className={overdue ? 'bg-rose-50/50' : 'hover:bg-neutral-50'}>
-                      <td className="px-4 py-3">
-                        <button type="button" onClick={() => setExpandedEnrollment(expanded ? '' : enrollment.id)} className="text-left">
-                          <div className="font-bold text-neutral-900">{enrollment.studentName}</div>
-                          <div className="text-[10px] text-neutral-500">{enrollment.courseName}{enrollment.studentPhone ? ` · ${enrollment.studentPhone}` : ''}</div>
-                          <div className="text-[10px] text-[#9c6a41]">{enrollment.payments.length} tranche(s) · Inscrit par {enrollment.registeredBy}</div>
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">{enrollment.shopType === 'HOMME' ? shopNames.HOMME : shopNames.FEMME}</td>
-                      <td className="px-4 py-3 text-right font-mono">{formatFCFA(enrollment.coursePrice)}</td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">{formatFCFA(enrollment.totalPaid)}</td>
-                      <td className="px-4 py-3 text-right font-mono font-bold">{formatFCFA(enrollment.remaining)}</td>
-                      <td className="px-4 py-3">
-                        <div className={`mb-1 flex items-center gap-1 ${overdue ? 'font-bold text-rose-700' : 'text-neutral-600'}`}>
-                          {overdue ? <AlertCircle className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}
-                          {overdue ? 'En retard' : enrollment.nextDueDate || 'Non définie'}
-                        </div>
-                        <div className="flex gap-1">
-                          <input type="date" value={dueDateDraft[enrollment.id] ?? enrollment.nextDueDate ?? ''} onChange={(event) => setDueDateDraft({ ...dueDateDraft, [enrollment.id]: event.target.value })} className="w-32 rounded border border-neutral-200 px-1 py-1 text-[10px]" />
-                          <button type="button" title="Enregistrer l’échéance" onClick={() => saveDueDate(enrollment)} className="rounded border border-neutral-200 p-1 hover:bg-neutral-100"><Check className="h-3 w-3" /></button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button type="button" disabled={!enrollment.remaining || enrollment.status !== 'ACTIVE'} onClick={() => { setPayingEnrollment(enrollment); setPaymentForm({ amount: '', paymentMethod: 'CASH' }); setPaymentRequestKey(requestId()); }} className="rounded-lg bg-[#b38059] px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-40">Encaisser une tranche</button>
-                      </td>
-                    </tr>
-                    {expanded && (
-                      <tr><td colSpan="7" className="bg-neutral-50 px-4 py-3">
-                        <div className="mb-2 flex items-center gap-2 text-[11px] font-bold text-neutral-700"><Users className="h-3.5 w-3.5" />Historique détaillé — {enrollment.studentName}</div>
-                        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-                          <table className="w-full min-w-[650px] text-left text-[11px]">
-                            <thead className="border-b bg-neutral-50 text-neutral-500"><tr><th className="px-3 py-2">Reçu / date</th><th className="px-3 py-2">Tranche</th><th className="px-3 py-2">Mode</th><th className="px-3 py-2 text-right">Montant</th><th className="px-3 py-2">État / opérateur</th><th className="px-3 py-2">Actions</th></tr></thead>
-                            <tbody className="divide-y divide-neutral-100">
-                              {enrollment.payments.map((payment) => (
-                                <tr key={payment.id} className={payment.status === 'VOIDED' ? 'text-neutral-400 line-through' : ''}>
-                                  <td className="px-3 py-2"><div className="font-mono font-bold">{payment.paymentNumber}</div><div>{new Date(payment.createdAt).toLocaleString('fr-FR')}</div></td>
-                                  <td className="px-3 py-2">{payment.installmentNumber}</td>
-                                  <td className="px-3 py-2">{getPaymentMethodLabel(payment.paymentMethod)}</td>
-                                  <td className="px-3 py-2 text-right font-mono font-bold">{formatFCFA(payment.amount)}</td>
-                                  <td className="px-3 py-2">{payment.status === 'VOIDED' ? `Régularisé: ${payment.voidReason}` : `Validé par ${payment.createdByName}`}</td>
-                                  <td className="px-3 py-2">
-                                    <div className="flex gap-2">
-                                      {payment.status === 'VALIDATED' && <button type="button" title="Réimprimer le reçu" onClick={() => triggerPrint(paymentReceipt(enrollment, payment, shopNames))} className="rounded p-1 text-[#9c6a41] hover:bg-neutral-100"><Printer className="h-3.5 w-3.5" /></button>}
-                                      {payment.status === 'VALIDATED' && <button type="button" onClick={() => { setVoidTarget({ enrollment, payment }); setVoidReason(''); }} className="text-[10px] font-semibold text-rose-600 hover:underline">Régulariser</button>}
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                              {!enrollment.payments.length && <tr><td colSpan="6" className="px-3 py-3 text-center text-neutral-500">Aucun versement; l’inscription reste à régler.</td></tr>}
-                            </tbody>
-                          </table>
-                        </div>
-                      </td></tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-              {!visibleEnrollments.length && !loading && <tr><td colSpan="7" className="px-4 py-8 text-center text-neutral-500">Aucun apprenant trouvé pour ces critères.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {renderEnrollmentTable('Formations en cours', activeEnrollments, displayedActivePage, activePageCount, setActivePage)}
+      {renderEnrollmentTable('Formations terminées', completedEnrollments, displayedCompletedPage, completedPageCount, setCompletedPage, true)}
 
       {summary?.byCourse?.length > 0 && (
         <section className="rounded-xl border border-neutral-200 bg-white p-4">
@@ -526,7 +610,7 @@ export default function TrainingPanel({ currentUser, shopType = null }) {
           <div className="mt-3 divide-y divide-neutral-100">
             {summary.audit.slice(0, 20).map((entry) => (
               <div key={entry.id} className="flex flex-wrap justify-between gap-1 py-2 text-[11px]">
-                <span className="font-semibold">{auditDescription(entry)}{entry.shopType ? ` · ${entry.shopType}` : ''}</span>
+                <span className="font-semibold">{auditDescription(entry)}</span>
                 <span className="text-neutral-500">{new Date(entry.createdAt).toLocaleString('fr-FR')}</span>
               </div>
             ))}

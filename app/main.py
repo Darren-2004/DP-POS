@@ -49,8 +49,11 @@ from app.operations import (
 from app.training import (
     TrainingError,
     add_payment as add_training_payment,
+    cancel_enrollment as cancel_training_enrollment,
+    complete_enrollment as complete_training_enrollment,
     create_course as create_training_course,
     create_enrollment as create_training_enrollment,
+    delete_enrollment as delete_training_enrollment,
     list_courses as list_training_courses,
     list_enrollments as list_training_enrollments,
     training_summary,
@@ -550,6 +553,36 @@ def create_app(store=None):
         try:
             shop_type = training_scope(actor, body.get("shopType"))
             return create_training_enrollment(get_store(), body, actor, shop_type)
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.post("/api/training/enrollments/{enrollment_id}/cancel")
+    def post_training_enrollment_cancel(enrollment_id: str, request: Request):
+        actor = training_actor(request)
+        try:
+            return cancel_training_enrollment(
+                get_store(), enrollment_id, actor, training_scope(actor)
+            )
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.post("/api/training/enrollments/{enrollment_id}/complete")
+    def post_training_enrollment_complete(enrollment_id: str, request: Request):
+        actor = training_actor(request)
+        try:
+            return complete_training_enrollment(
+                get_store(), enrollment_id, actor, training_scope(actor)
+            )
+        except TrainingError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    @app.delete("/api/training/enrollments/{enrollment_id}")
+    def delete_training_enrollment_route(enrollment_id: str, request: Request):
+        actor = training_actor(request)
+        try:
+            return delete_training_enrollment(
+                get_store(), enrollment_id, actor, training_scope(actor)
+            )
         except TrainingError as error:
             raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 

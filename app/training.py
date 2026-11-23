@@ -232,7 +232,7 @@ def _enrollment_detail(connection, enrollment_id):
 
 
 def list_enrollments(store, shop_type=None, query=None):
-    clauses = []
+    clauses = ["e.deletedAt IS NULL"]
     parameters = []
     if shop_type in {"HOMME", "FEMME"}:
         clauses.append("e.shopType = ?")
@@ -242,9 +242,15 @@ def list_enrollments(store, shop_type=None, query=None):
         term = f"%{search}%"
         clauses.append("(e.studentName LIKE ? OR e.studentPhone LIKE ? OR e.courseName LIKE ?)")
         parameters.extend((term, term, term))
-    if (query or {}).get("status") in {"ACTIVE", "WITHDRAWN"}:
-        clauses.append("e.status = ?")
-        parameters.append(query["status"])
+    status = (query or {}).get("status")
+    if status == "ACTIVE":
+        clauses.extend(("e.status = 'ACTIVE'", "e.completedAt IS NULL"))
+    elif status == "COMPLETED":
+        clauses.extend(("e.status = 'ACTIVE'", "e.completedAt IS NOT NULL"))
+    elif status == "WITHDRAWN":
+        clauses.append("e.status = 'WITHDRAWN'")
+    if status and status not in {"ACTIVE", "COMPLETED", "WITHDRAWN"}:
+        raise TrainingError(400, "Statut d’inscription invalide")
     where = f'WHERE {" AND ".join(clauses)}' if clauses else ""
     with store._connect() as connection:
         ids = [
@@ -256,6 +262,93 @@ def list_enrollments(store, shop_type=None, query=None):
             ).fetchall()
         ]
         return [_enrollment_detail(connection, enrollment_id) for enrollment_id in ids]
+
+
+def _enrollment_for_update(connection, enrollment_id, shop_type):
+    enrollment = connection.execute(
+        'SELECT * FROM "TrainingEnrollment" WHERE id = ?', (enrollment_id,)
+    ).fetchone()
+    if enrollment is None or enrollment["deletedAt"] is not None:
+        raise TrainingError(404, "Inscription introuvable")
+    if shop_type and enrollment["shopType"] != shop_type:
+        raise TrainingError(403, "Cet apprenant ne fait pas partie de votre shop")
+    return enrollment
+
+
+def cancel_enrollment(store, enrollment_id, actor, shop_type):
+    with store._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        enrollment = _enrollment_for_update(connection, enrollment_id, shop_type)
+        if enrollment["status"] != "ACTIVE" or enrollment["completedAt"] is not None:
+            raise TrainingError(400, "Seule une formation en cours peut être annulée")
+        now = _now()
+        connection.execute(
+            '''UPDATE "TrainingEnrollment" SET status = 'WITHDRAWN', updatedAt = ?
+               WHERE id = ?''',
+            (now, enrollment_id),
+        )
+        _audit(
+            connection, actor["id"], "ENROLLMENT_CANCELLED",
+            {"studentName": enrollment["studentName"], "courseName": enrollment["courseName"],
+             "totalPaid": _enrollment_detail(connection, enrollment_id)["totalPaid"]},
+            enrollment["shopType"], enrollment_id=enrollment_id,
+        )
+        return _enrollment_detail(connection, enrollment_id)
+
+
+def complete_enrollment(store, enrollment_id, actor, shop_type):
+    with store._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        enrollment = _enrollment_for_update(connection, enrollment_id, shop_type)
+        if enrollment["status"] != "ACTIVE" or enrollment["completedAt"] is not None:
+            raise TrainingError(400, "Seule une formation en cours peut être terminée")
+        completed_at = _now()
+        connection.execute(
+            '''UPDATE "TrainingEnrollment" SET completedAt = ?, updatedAt = ?
+               WHERE id = ?''',
+            (completed_at, completed_at, enrollment_id),
+        )
+        _audit(
+            connection, actor["id"], "ENROLLMENT_COMPLETED",
+            {"studentName": enrollment["studentName"], "courseName": enrollment["courseName"]},
+            enrollment["shopType"], enrollment_id=enrollment_id,
+        )
+        return _enrollment_detail(connection, enrollment_id)
+
+
+def delete_enrollment(store, enrollment_id, actor, shop_type):
+    with store._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        enrollment = _enrollment_for_update(connection, enrollment_id, shop_type)
+        now = _now()
+        payments = connection.execute(
+            '''SELECT id, amount FROM "TrainingPayment"
+               WHERE enrollmentId = ? AND status = 'VALIDATED' ''',
+            (enrollment_id,),
+        ).fetchall()
+        connection.execute(
+            '''UPDATE "TrainingPayment"
+               SET status = 'VOIDED', voidedAt = ?, voidedById = ?, voidReason = ?
+               WHERE enrollmentId = ? AND status = 'VALIDATED' ''',
+            (now, actor["id"], "Suppression de l’apprenant", enrollment_id),
+        )
+        connection.execute(
+            '''UPDATE "TrainingEnrollment"
+               SET status = 'WITHDRAWN', deletedAt = ?, updatedAt = ?
+               WHERE id = ?''',
+            (now, now, enrollment_id),
+        )
+        _audit(
+            connection, actor["id"], "ENROLLMENT_DELETED",
+            {
+                "studentName": enrollment["studentName"],
+                "courseName": enrollment["courseName"],
+                "paymentCount": len(payments),
+                "deductedRevenue": round(sum(float(payment["amount"]) for payment in payments), 2),
+            },
+            enrollment["shopType"], enrollment_id=enrollment_id,
+        )
+        return {"id": enrollment_id, "deleted": True}
 
 
 def create_enrollment(store, body, actor, shop_type):
@@ -414,13 +507,13 @@ def training_summary(store, query):
         if start and end:
             bounds = (start[0], end[1])
     shop_type = query.get("shopType")
-    enrollment_clauses = ["status = 'ACTIVE'"]
+    enrollment_clauses = ["status = 'ACTIVE'", "completedAt IS NULL", "deletedAt IS NULL"]
     enrollment_parameters = []
     if shop_type in {"HOMME", "FEMME"}:
         enrollment_clauses.append("shopType = ?")
         enrollment_parameters.append(shop_type)
     enrollment_where = " AND ".join(enrollment_clauses)
-    payment_clauses = ["p.status = 'VALIDATED'"]
+    payment_clauses = ["p.status = 'VALIDATED'", "e.deletedAt IS NULL"]
     payment_parameters = []
     if bounds:
         payment_clauses.append("p.createdAt BETWEEN ? AND ?")
@@ -445,7 +538,7 @@ def training_summary(store, query):
                 WHERE {payment_where}''',
             payment_parameters,
         ).fetchall()
-        all_payment_clauses = ["p.status = 'VALIDATED'"]
+        all_payment_clauses = ["p.status = 'VALIDATED'", "e.deletedAt IS NULL"]
         all_payment_parameters = []
         if shop_type in {"HOMME", "FEMME"}:
             all_payment_clauses.append("e.shopType = ?")
@@ -462,8 +555,9 @@ def training_summary(store, query):
                     WHERE p.enrollmentId = e.id AND p.status = 'VALIDATED'
                 ), 0), 0)), 0)
                 FROM "TrainingEnrollment" e
-                WHERE {enrollment_where}''',
-            enrollment_parameters,
+                WHERE e.status = 'ACTIVE' AND e.deletedAt IS NULL
+                  {"AND e.shopType = ?" if shop_type in {"HOMME", "FEMME"} else ""}''',
+            ([shop_type] if shop_type in {"HOMME", "FEMME"} else []),
         ).fetchone()[0]
         overdue_clauses = [*enrollment_clauses, "nextDueDate IS NOT NULL", "nextDueDate < ?"]
         overdue_parameters = [*enrollment_parameters, today]
@@ -478,13 +572,14 @@ def training_summary(store, query):
         ).fetchone()[0]
         courses = connection.execute(
             f'''SELECT e.courseId, e.courseName, e.shopType,
-                       COUNT(DISTINCT CASE WHEN e.status = 'ACTIVE' THEN e.id END) AS enrollmentCount,
+                       COUNT(DISTINCT CASE WHEN e.status = 'ACTIVE' AND e.completedAt IS NULL
+                           AND e.deletedAt IS NULL THEN e.id END) AS enrollmentCount,
                        COALESCE(SUM(p.amount), 0) AS periodRevenue
                 FROM "TrainingEnrollment" e
                 LEFT JOIN "TrainingPayment" p ON p.enrollmentId = e.id
                     AND p.status = 'VALIDATED'
                     {"AND p.createdAt BETWEEN ? AND ?" if bounds else ""}
-                WHERE 1 = 1 {"AND e.shopType = ?" if shop_type in {"HOMME", "FEMME"} else ""}
+                WHERE e.deletedAt IS NULL {"AND e.shopType = ?" if shop_type in {"HOMME", "FEMME"} else ""}
                 GROUP BY e.courseId, e.courseName, e.shopType
                 ORDER BY periodRevenue DESC, e.courseName COLLATE NOCASE''',
             ([*bounds] if bounds else []) + ([shop_type] if shop_type in {"HOMME", "FEMME"} else []),

@@ -221,6 +221,73 @@ class TrainingWorkflowTests(unittest.TestCase):
                 "admin",
             )
 
+    def test_cancel_complete_and_delete_enrollment_accounting(self):
+        course = self._course(price=10000)
+        cancelled = self._enrollment(course, requestKey="cancelled-enrollment")
+        cancellation = self.client.post(
+            f"/api/training/enrollments/{cancelled['id']}/cancel",
+            headers=self.manager_headers,
+        )
+        self.assertEqual(cancellation.status_code, 200, cancellation.text)
+        self.assertEqual(cancellation.json()["status"], "WITHDRAWN")
+        self.assertEqual(cancellation.json()["totalPaid"], 5000)
+        self.assertEqual(
+            self.client.get(
+                "/api/training/enrollments?status=ACTIVE", headers=self.manager_headers
+            ).json(),
+            [],
+        )
+
+        completed = self._enrollment(
+            course, requestKey="completed-enrollment", initialAmount=3000
+        )
+        completion = self.client.post(
+            f"/api/training/enrollments/{completed['id']}/complete",
+            headers=self.manager_headers,
+        )
+        self.assertEqual(completion.status_code, 200, completion.text)
+        self.assertTrue(completion.json()["completedAt"])
+        completed_rows = self.client.get(
+            "/api/training/enrollments?status=COMPLETED", headers=self.manager_headers
+        ).json()
+        self.assertEqual([row["id"] for row in completed_rows], [completed["id"]])
+
+        deleted = self._enrollment(
+            course, requestKey="deleted-enrollment", initialAmount=2000
+        )
+        second_payment = self.client.post(
+            f"/api/training/enrollments/{deleted['id']}/payments",
+            headers=self.manager_headers,
+            json={"amount": 2000, "paymentMethod": "CASH"},
+        )
+        self.assertEqual(second_payment.status_code, 201, second_payment.text)
+        deletion = self.client.delete(
+            f"/api/training/enrollments/{deleted['id']}", headers=self.manager_headers
+        )
+        self.assertEqual(deletion.status_code, 200, deletion.text)
+        self.assertEqual(deletion.json(), {"id": deleted["id"], "deleted": True})
+
+        listed = self.client.get(
+            "/api/training/enrollments", headers=self.manager_headers
+        ).json()
+        self.assertNotIn(deleted["id"], [row["id"] for row in listed])
+        with self.store._connect() as connection:
+            deleted_payments = connection.execute(
+                'SELECT status, voidReason FROM "TrainingPayment" WHERE enrollmentId = ?',
+                (deleted["id"],),
+            ).fetchall()
+        self.assertTrue(all(payment["status"] == "VOIDED" for payment in deleted_payments))
+        self.assertTrue(all(payment["voidReason"] == "Suppression de l’apprenant" for payment in deleted_payments))
+
+        today = __import__("datetime").date.today().isoformat()
+        summary = self.client.get(
+            f"/api/training/summary?startDate={today}&endDate={today}",
+            headers=self.admin_headers,
+        ).json()
+        self.assertEqual(summary["periodRevenue"], 8000)
+        self.assertEqual(summary["totalPaid"], 8000)
+        self.assertTrue(any(event["action"] == "ENROLLMENT_DELETED" for event in summary["audit"]))
+
     def test_training_payments_are_in_cash_totals_and_report_and_scoped(self):
         course = self._course()
         self._enrollment(course)
