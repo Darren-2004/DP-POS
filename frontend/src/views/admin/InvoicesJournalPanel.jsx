@@ -66,6 +66,23 @@ export default function InvoicesJournalPanel({
     (inv) => !shopType || (inv.shopType || 'FEMME') === shopType
   );
 
+  const getInvoiceProviderAmount = (inv) => {
+    if (!providerId || !inv) return Number(inv?.totalAmount) || 0;
+    if (inv.providerAmount !== undefined && inv.providerAmount !== null) {
+      return Number(inv.providerAmount) || 0;
+    }
+    if (Array.isArray(inv.items)) {
+      return inv.items
+        .filter(
+          (item) =>
+            item.providerId === providerId &&
+            String(item.itemType || 'SERVICE').toUpperCase() === 'SERVICE'
+        )
+        .reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0);
+    }
+    return Number(inv.totalAmount) || 0;
+  };
+
   const filteredInvoices = safeInvoices.filter((inv) => {
     if (providerId && !inv.items?.some((item) => item.providerId === providerId)) return false;
     if (statusFilter !== 'ALL' && inv.status !== statusFilter) return false;
@@ -207,8 +224,13 @@ export default function InvoicesJournalPanel({
           </select>
         </div>
 
-        <div className="text-xs font-semibold text-neutral-500">
-          {filteredInvoices.length} résultat{filteredInvoices.length > 1 ? 's' : ''}
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-500">
+          <span>{filteredInvoices.length} résultat{filteredInvoices.length > 1 ? 's' : ''}</span>
+          {providerId && (
+            <span className="rounded bg-[#b38059]/10 border border-[#b38059]/30 px-2 py-0.5 text-[#825534] font-bold">
+              Total prestations : {formatFCFA(tableInvoices.reduce((sum, inv) => sum + getInvoiceProviderAmount(inv), 0))}
+            </span>
+          )}
         </div>
       </div>
 
@@ -231,7 +253,14 @@ export default function InvoicesJournalPanel({
               >
                 <span className="text-xs font-bold text-neutral-900">{invoice.invoiceNumber} · {invoice.clientName || 'Client de passage'}</span>
                 <span className="text-[11px] text-rose-700">{invoice.cancellationReason || 'Motif non renseigné'}</span>
-                <span className="text-xs font-bold text-neutral-600">{formatFCFA(invoice.totalAmount)}</span>
+                <span className="text-xs font-bold text-neutral-600">
+                  {formatFCFA(getInvoiceProviderAmount(invoice))}
+                  {providerId && getInvoiceProviderAmount(invoice) !== Number(invoice.totalAmount) && (
+                    <span className="text-[10px] text-neutral-400 font-normal ml-1">
+                      (Total ticket : {formatFCFA(invoice.totalAmount)})
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -257,7 +286,7 @@ export default function InvoicesJournalPanel({
                 <th className="py-2.5 px-3">Établissement</th>
                 <th className="py-2.5 px-3">Moyen de Paiement</th>
                 <th className="py-2.5 px-3">Statut</th>
-                <th className="py-2.5 px-3 text-right">Montant</th>
+                <th className="py-2.5 px-3 text-right">{providerId ? 'Montant Prestations' : 'Montant'}</th>
                 <th className="py-2.5 px-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -317,8 +346,15 @@ export default function InvoicesJournalPanel({
                         </span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-[#b38059]">
-                      {formatFCFA(inv.totalAmount)}
+                    <td className="py-2.5 px-3 text-right">
+                      <div className="font-bold text-[#b38059]">
+                        {formatFCFA(getInvoiceProviderAmount(inv))}
+                      </div>
+                      {providerId && getInvoiceProviderAmount(inv) !== Number(inv.totalAmount) && (
+                        <div className="text-[10px] text-neutral-400 font-normal">
+                          Total ticket : {formatFCFA(inv.totalAmount)}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-right">
                       <div className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -571,8 +607,9 @@ export default function InvoicesJournalPanel({
                             <td className="py-2 pr-2 text-neutral-900 leading-snug">
                               <div>{item.categoryName || item.name || '—'}</div>
                               {item.providerName && (
-                                <div className="mt-0.5 text-[10px] text-neutral-500">
+                                <div className={`mt-0.5 text-[10px] ${providerId && item.providerId === providerId ? 'font-semibold text-[#825534]' : 'text-neutral-500'}`}>
                                   Prestataire : {item.providerName}
+                                  {providerId && item.providerId === providerId && ' (sélectionné)'}
                                 </div>
                               )}
                             </td>
@@ -588,12 +625,29 @@ export default function InvoicesJournalPanel({
               </div>
 
               {/* Total Box */}
-              <div className="rounded-lg bg-[#faf7f4] border border-[#b38059]/30 px-4 py-3 flex items-center justify-between">
-                <div className="text-xs font-semibold text-neutral-600">Montant Total Réglé</div>
-                <div className="text-lg font-bold text-[#b38059] tabular-nums">
-                  {formatFCFA(selectedInvoice.totalAmount)}
+              {providerId ? (
+                <div className="rounded-lg bg-[#faf7f4] border border-[#b38059]/30 px-4 py-3 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-[#825534]">Total Prestations du Prestataire</div>
+                    <div className="text-lg font-bold text-[#b38059] tabular-nums">
+                      {formatFCFA(getInvoiceProviderAmount(selectedInvoice))}
+                    </div>
+                  </div>
+                  {getInvoiceProviderAmount(selectedInvoice) !== Number(selectedInvoice.totalAmount) && (
+                    <div className="flex items-center justify-between pt-1 border-t border-neutral-200 text-xs text-neutral-500">
+                      <span>Montant total du ticket</span>
+                      <span className="font-medium text-neutral-700">{formatFCFA(selectedInvoice.totalAmount)}</span>
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-lg bg-[#faf7f4] border border-[#b38059]/30 px-4 py-3 flex items-center justify-between">
+                  <div className="text-xs font-semibold text-neutral-600">Montant Total Réglé</div>
+                  <div className="text-lg font-bold text-[#b38059] tabular-nums">
+                    {formatFCFA(selectedInvoice.totalAmount)}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Drawer Footer Actions */}

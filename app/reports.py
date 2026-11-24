@@ -53,6 +53,17 @@ def _cashier_name(connection, cashier_id):
     return row["name"] if row else None
 
 
+def _row_amount(invoice, provider_id=None):
+    if provider_id:
+        try:
+            val = invoice["providerAmount"]
+            if val is not None:
+                return float(val or 0)
+        except (KeyError, IndexError):
+            pass
+    return float(invoice["totalAmount"] or 0)
+
+
 def _invoice_rows(connection, bounds=None, cashier_id=None, cashier_name=None, all_time=False, shop_type=None, provider_id=None):
     clauses = ["status = 'VALIDATED'"]
     parameters = []
@@ -82,6 +93,16 @@ def _invoice_rows(connection, bounds=None, cashier_id=None, cashier_name=None, a
                )'''
         )
         parameters.append(provider_id)
+        select_clause = f'''SELECT "Invoice".*, (
+            SELECT COALESCE(SUM(provider_item.price * COALESCE(provider_item.qty, 1)), 0)
+            FROM "InvoiceItem" provider_item
+            WHERE provider_item.invoiceId = "Invoice".id
+              AND provider_item.providerId = ?
+              AND COALESCE(provider_item.itemType, 'SERVICE') = 'SERVICE'
+        ) AS providerAmount FROM "Invoice"'''
+        return connection.execute(
+            f'{select_clause} WHERE {" AND ".join(clauses)}', [provider_id, *parameters]
+        ).fetchall()
     return connection.execute(
         f'SELECT * FROM "Invoice" WHERE {" AND ".join(clauses)}', parameters
     ).fetchall()
@@ -127,7 +148,7 @@ def _training_payment_rows(connection, bounds=None, cashier_id=None, all_time=Fa
     ).fetchall()
 
 
-def _stats_for_rows(invoices, payments, include_paid_delivery_count=True, training_payments=()):
+def _stats_for_rows(invoices, payments, include_paid_delivery_count=True, training_payments=(), provider_id=None):
     stats = {
         "total": 0.0, "cash": 0.0, "online": 0.0, "orangeMoney": 0.0,
         "count": 0, "reservationTotal": 0.0, "resPaymentsCount": len(payments),
@@ -147,8 +168,8 @@ def _stats_for_rows(invoices, payments, include_paid_delivery_count=True, traini
         if invoice["isDelivery"]:
             if not invoice["isPaid"] and invoice["deliveryStatus"] != "DELIVERED":
                 continue
-            fee = float(invoice["deliveryFee"] or 0)
-            amount = float(invoice["totalAmount"] or 0)
+            fee = 0.0 if provider_id else float(invoice["deliveryFee"] or 0)
+            amount = _row_amount(invoice, provider_id)
             total_with_fee = amount + fee
             stats["deliveryCount"] += 1
             if include_paid_delivery_count:
@@ -166,7 +187,7 @@ def _stats_for_rows(invoices, payments, include_paid_delivery_count=True, traini
             stats["orangeMoney"] += breakdown["ORANGE_MONEY"]
             stats["directOrange"] += breakdown["ORANGE_MONEY"]
         else:
-            amount = float(invoice["totalAmount"] or 0)
+            amount = _row_amount(invoice, provider_id)
             stats["directCount"] += 1
             stats["count"] += 1
             stats["total"] += amount
@@ -263,7 +284,7 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
     payments_breakdown = {"CASH": 0.0, "ORANGE_MONEY": 0.0, "ONLINE": 0.0}
     total_sales = 0.0
     for inv in invoices:
-        amt = float(inv["totalAmount"] or 0)
+        amt = _row_amount(inv, provider_id)
         total_sales += amt
         m = payment_method_breakdown(inv["paymentMethod"], amt)
         for k in payments_breakdown:
@@ -313,7 +334,7 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
                 try:
                     dt = datetime.fromisoformat(dt_raw.replace("Z", "+00:00")).astimezone()
                     h = dt.hour
-                    amt = float(inv["totalAmount"] or 0)
+                    amt = _row_amount(inv, provider_id)
                     st = str(inv["shopType"] or "FEMME").upper()
                     target_h = max(8, min(22, h))
                     hour_buckets[target_h]["total"] += amt
@@ -349,7 +370,7 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
                 try:
                     dt = datetime.fromisoformat(dt_raw.replace("Z", "+00:00")).astimezone()
                     d_str = dt.strftime("%Y-%m-%d")
-                    amt = float(inv["totalAmount"] or 0)
+                    amt = _row_amount(inv, provider_id)
                     st = str(inv["shopType"] or "FEMME").upper()
                     b = date_buckets.setdefault(d_str, {"total": 0.0, "shop1": 0.0, "shop2": 0.0, "count": 0})
                     b["total"] += amt
@@ -421,7 +442,7 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
                     dt = datetime.fromisoformat(dt_raw.replace("Z", "+00:00")).astimezone()
                     if h_start <= dt.hour < h_end:
                         count += 1
-                        rev += float(inv["totalAmount"] or 0)
+                        rev += _row_amount(inv, provider_id)
                 except Exception:
                     pass
         rush_hours.append({"slot": slot_label, "count": count, "revenue": round(rev, 2)})
@@ -507,9 +528,9 @@ def _enriched_analytics(connection, bounds, cashier_id=None, cashier_name=None, 
     for c in category_breakdown:
         c["percentage"] = round((c["revenue"] / total_cat_rev) * 100, 1)
 
-    shop1_total = sum(float(inv["totalAmount"] or 0) for inv in invoices if str(inv["shopType"] or "").upper() == "HOMME")
+    shop1_total = sum(_row_amount(inv, provider_id) for inv in invoices if str(inv["shopType"] or "").upper() == "HOMME")
     shop1_count = sum(1 for inv in invoices if str(inv["shopType"] or "").upper() == "HOMME")
-    shop2_total = sum(float(inv["totalAmount"] or 0) for inv in invoices if str(inv["shopType"] or "").upper() != "HOMME")
+    shop2_total = sum(_row_amount(inv, provider_id) for inv in invoices if str(inv["shopType"] or "").upper() != "HOMME")
     shop2_count = sum(1 for inv in invoices if str(inv["shopType"] or "").upper() != "HOMME")
 
     shop_comparison = {
@@ -598,7 +619,7 @@ def dashboard_stats(store, query):
                 if provider_id
                 else _training_payment_rows(connection, bounds, cashier_id, shop_type=shop_type)
             )
-            return _stats_for_rows(invoices, payments, training_payments=training_payments)
+            return _stats_for_rows(invoices, payments, training_payments=training_payments, provider_id=provider_id)
 
         today = range_stats(today_bounds)
         yesterday = range_stats(yesterday_bounds)
@@ -629,6 +650,7 @@ def dashboard_stats(store, query):
             filtered = _stats_for_rows(
                 invoices, payments, include_paid_delivery_count=False,
                 training_payments=training_payments,
+                provider_id=provider_id,
             )
 
         effective_bounds = filtered_bounds if filtered_bounds else today_bounds

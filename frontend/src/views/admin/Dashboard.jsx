@@ -154,10 +154,28 @@ export default function Dashboard({
   );
   const validatedInvoices = safeInvoices.filter((inv) => String(inv.status || '').toUpperCase() === 'VALIDATED');
 
+  // Compute invoice amount (provider-scoped if a provider is selected)
+  const getInvoiceAmount = (inv) => {
+    if (!providerId) return Number(inv.totalAmount) || 0;
+    if (inv.providerAmount !== undefined && inv.providerAmount !== null) {
+      return Number(inv.providerAmount) || 0;
+    }
+    if (Array.isArray(inv.items)) {
+      return inv.items
+        .filter(
+          (item) =>
+            item.providerId === providerId &&
+            String(item.itemType || 'SERVICE').toUpperCase() === 'SERVICE'
+        )
+        .reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0);
+    }
+    return Number(inv.totalAmount) || 0;
+  };
+
   // Compute total sales directly or from backend
   const totalRev =
     analytics?.paymentBreakdown?.total ??
-    validatedInvoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+    validatedInvoices.reduce((sum, inv) => sum + getInvoiceAmount(inv), 0);
 
   const totalTickets = analytics?.ratios?.totalTickets ?? validatedInvoices.length;
 
@@ -168,7 +186,7 @@ export default function Dashboard({
   let shop1Revenue = 0;
   let shop2Revenue = 0;
   allValidated.forEach((inv) => {
-    const amt = Number(inv.totalAmount) || 0;
+    const amt = getInvoiceAmount(inv);
     if (inv.shopType === 'HOMME') {
       shop1Revenue += amt;
     } else {
@@ -228,7 +246,7 @@ export default function Dashboard({
           const d = new Date(inv.createdAt);
           if (d.getFullYear() === currentYear) {
             const m = d.getMonth();
-            const amt = Number(inv.totalAmount) || 0;
+            const amt = getInvoiceAmount(inv);
             if (monthlyBuckets[m]) {
               monthlyBuckets[m].total += amt;
               if (inv.shopType === 'HOMME') monthlyBuckets[m].shop1 += amt;
@@ -266,7 +284,7 @@ export default function Dashboard({
           const dStr = inv.createdAt.slice(0, 10);
           const bucket = weekBuckets.find((b) => b.dateStr === dStr);
           if (bucket) {
-            const amt = Number(inv.totalAmount) || 0;
+            const amt = getInvoiceAmount(inv);
             bucket.total += amt;
             if (inv.shopType === 'HOMME') bucket.shop1 += amt;
             else bucket.shop2 += amt;
@@ -275,7 +293,7 @@ export default function Dashboard({
       });
       return weekBuckets;
     }
-  }, [invoices, comparisonPeriod, dashboardInsights]);
+  }, [invoices, comparisonPeriod, dashboardInsights, providerId]);
 
   // Payment breakdown data
   const pb = analytics.paymentBreakdown || {};
@@ -288,7 +306,7 @@ export default function Dashboard({
     orangeTotal = 0;
     onlineTotal = 0;
     validatedInvoices.forEach((inv) => {
-      const amt = Number(inv.totalAmount) || 0;
+      const amt = getInvoiceAmount(inv);
       const m = String(inv.paymentMethod || '').toUpperCase();
       if (['ORANGE_MONEY', 'ORANGE', 'OM'].includes(m)) orangeTotal += amt;
       else if (['ONLINE', 'MOBILE_MONEY', 'MOMO', 'WAVE'].includes(m)) onlineTotal += amt;
@@ -303,6 +321,7 @@ export default function Dashboard({
     validatedInvoices.forEach((inv) => {
       if (Array.isArray(inv.items)) {
         inv.items.forEach((item) => {
+          if (providerId && item.providerId !== providerId) return;
           const name = item.categoryName || 'Prestation';
           const price = Number(item.price) || 0;
           const qty = Number(item.qty) || 1;

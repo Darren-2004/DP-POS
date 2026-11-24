@@ -215,7 +215,10 @@ class ServiceProviderApiTests(unittest.TestCase):
         self.assertEqual(invoice["shopType"], "HOMME")
         self.assertEqual(invoice["items"][0]["providerName"], "Aminata")
 
-        listed = self.client.get("/api/invoices?includeAllDeliveries=true").json()
+        listed = self.client.get(
+            "/api/invoices?includeAllDeliveries=true",
+            headers=self.admin_headers,
+        ).json()
         listed_invoice = next(item for item in listed if item["id"] == invoice["id"])
         self.assertEqual(listed_invoice["items"][0]["providerName"], "Aminata")
 
@@ -445,6 +448,87 @@ class ServiceProviderApiTests(unittest.TestCase):
             ).status_code,
             403,
         )
+
+    def test_filter_by_provider_returns_only_provider_prestation_total_not_full_invoice_total(self):
+        provider_a = self._create_provider("Prestataire A", "HOMME")
+        provider_b = self._create_provider("Prestataire B", "HOMME")
+
+        response = self.client.post(
+            "/api/invoices",
+            headers=self.homme_headers,
+            json={
+                "totalAmount": 12000,
+                "createdById": "cashier-h",
+                "paymentMethod": "CASH",
+                "items": [
+                    {
+                        "categoryName": "Coiffure A",
+                        "price": 3000,
+                        "qty": 1,
+                        "itemType": "SERVICE",
+                        "providerId": provider_a["id"],
+                    },
+                    {
+                        "categoryName": "Coiffure B",
+                        "price": 7000,
+                        "qty": 1,
+                        "itemType": "SERVICE",
+                        "providerId": provider_b["id"],
+                    },
+                    {
+                        "categoryName": "Gel Cheveux",
+                        "price": 2000,
+                        "qty": 1,
+                        "itemType": "PRODUCT",
+                    },
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        invoice_data = response.json()
+        self.assertEqual(invoice_data["totalAmount"], 12000)
+
+        today = datetime.now().astimezone().strftime("%Y-%m-%d")
+
+        # Stats endpoint with providerId filter
+        stats_a = self.client.get(
+            f"/api/stats?startDate={today}&endDate={today}&providerId={provider_a['id']}",
+            headers=self.admin_headers,
+        ).json()
+        self.assertEqual(stats_a["filtered"]["total"], 3000)
+        self.assertEqual(stats_a["filtered"]["cash"], 3000)
+        self.assertEqual(stats_a["today"]["total"], 3000)
+        self.assertEqual(stats_a["analytics"]["paymentBreakdown"]["total"], 3000)
+        self.assertEqual(stats_a["analytics"]["ratios"]["serviceRevenue"], 3000)
+
+        stats_b = self.client.get(
+            f"/api/stats?startDate={today}&endDate={today}&providerId={provider_b['id']}",
+            headers=self.admin_headers,
+        ).json()
+        self.assertEqual(stats_b["filtered"]["total"], 7000)
+        self.assertEqual(stats_b["filtered"]["cash"], 7000)
+        self.assertEqual(stats_b["today"]["total"], 7000)
+        self.assertEqual(stats_b["analytics"]["paymentBreakdown"]["total"], 7000)
+        self.assertEqual(stats_b["analytics"]["ratios"]["serviceRevenue"], 7000)
+
+        # Invoices endpoint with providerId filter
+        invoices_a = self.client.get(
+            f"/api/invoices?providerId={provider_a['id']}&page=1&pageSize=50",
+            headers=self.admin_headers,
+        ).json()
+        self.assertEqual(invoices_a["total"], 1)
+        inv_a = invoices_a["items"][0]
+        self.assertEqual(inv_a["totalAmount"], 12000)
+        self.assertEqual(inv_a["providerAmount"], 3000)
+
+        invoices_b = self.client.get(
+            f"/api/invoices?providerId={provider_b['id']}&page=1&pageSize=50",
+            headers=self.admin_headers,
+        ).json()
+        self.assertEqual(invoices_b["total"], 1)
+        inv_b = invoices_b["items"][0]
+        self.assertEqual(inv_b["totalAmount"], 12000)
+        self.assertEqual(inv_b["providerAmount"], 7000)
 
 
 if __name__ == "__main__":

@@ -223,6 +223,14 @@ def list_invoices(store, query):
             if field in invoice:
                 invoice[field] = bool(invoice[field])
         invoice["items"] = items_by_invoice.get(invoice["id"], [])
+        if provider_id:
+            provider_amount = sum(
+                float(it.get("price") or 0) * int(it.get("qty") or 1)
+                for it in invoice["items"]
+                if str(it.get("providerId") or "") == provider_id
+                and str(it.get("itemType") or "SERVICE").upper() == "SERVICE"
+            )
+            invoice["providerAmount"] = provider_amount
         result.append(invoice)
     if paginated:
         return {
